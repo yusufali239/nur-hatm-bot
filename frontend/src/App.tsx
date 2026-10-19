@@ -149,6 +149,10 @@ export const App: React.FC = () => {
 
   const handleCompleteJuzs = async (numbers: number[]) => {
     if (!hatm || numbers.length === 0 || submitting) return;
+    const numsStr = numbers.map((n) => `${n}-пора`).join(', ');
+    const confirmed = window.confirm(`Ҳақиқатан ҳам ${numsStr}ни тўлиқ ўқиб бўлдингизми?`);
+    if (!confirmed) return;
+
     triggerHaptic('success');
     setSubmitting(true);
     try {
@@ -169,8 +173,38 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleUncompleteJuzs = async (numbers: number[]) => {
+    if (!hatm || numbers.length === 0 || submitting) return;
+    const numsStr = numbers.map((n) => `${n}-пора`).join(', ');
+    const confirmed = window.confirm(`${numsStr}ни ҳали ўқиб бўлмаган ҳолатга қайтармоқчимисиз?`);
+    if (!confirmed) return;
+
+    triggerHaptic('warning');
+    setSubmitting(true);
+    try {
+      const res = await (await import('./lib/api')).uncompleteBookedJuzs({
+        user_id: identity.id,
+        hatm_id: hatm.id,
+        juz_numbers: numbers,
+      });
+      setState((prev) =>
+        prev ? { ...prev, hatm: res.hatm, user: res.user } : prev
+      );
+      showToast(res.message, 'success');
+      loadState(true);
+    } catch (err: any) {
+      showToast(err.message || 'Хатолик юз берди', 'error');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleReleaseJuzs = async (numbers: number[]) => {
     if (!hatm || numbers.length === 0 || submitting) return;
+    const numsStr = numbers.map((n) => `${n}-пора`).join(', ');
+    const confirmed = window.confirm(`Ҳақиқатан ҳам ${numsStr}ни бошқа ўқувчилар учун бўшатмоқчимисиз?`);
+    if (!confirmed) return;
+
     triggerHaptic('warning');
     setSubmitting(true);
     try {
@@ -343,6 +377,23 @@ export const App: React.FC = () => {
                 </div>
               </div>
 
+              {/* 30/30 Full Completion Celebration Banner */}
+              {hatm.done_count === 30 && (
+                <div className="mt-3 p-3 rounded-2xl bg-amber-500/20 border border-amber-300/40 text-amber-100 flex items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">🎉</span>
+                    <div>
+                      <span className="font-extrabold text-white">Алҳамдулиллаҳ! 30 та пора тўлиқ ўқилди!</span>
+                      <div className="text-[10px] opacity-80">
+                        {hatm.dua_done
+                          ? 'Ушбу хатм дуоси қилинди. Барча иштирокчиларга ташаккур!'
+                          : 'Админ томонидан Хатм Дуоси ўқилиши кутилмоқда...'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Liquid Progress Bar */}
               <div className="mt-3 h-2.5 w-full rounded-full bg-white/5 border border-white/10 overflow-hidden p-0.5">
                 <motion.div
@@ -504,14 +555,22 @@ export const App: React.FC = () => {
                   <Award className="w-4 h-4 text-amber-300" />
                   <span>Ушбу хатмда сиз ўқиган поралар ({myDoneJuzs.length} та)</span>
                 </h3>
-                <div className="flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-2">
                   {myDoneJuzs.map((j) => (
-                    <span
+                    <div
                       key={j.number}
-                      className="px-3 py-1 rounded-xl juz-glass-done text-xs font-bold text-amber-100"
+                      className="px-3 py-1.5 rounded-xl juz-glass-done text-xs font-bold text-amber-100 flex items-center gap-2"
                     >
-                      ✅ {j.number}-пора
-                    </span>
+                      <span>✅ {j.number}-пора</span>
+                      <button
+                        type="button"
+                        onClick={() => handleUncompleteJuzs([j.number])}
+                        className="text-[10px] text-amber-300/80 hover:text-white underline"
+                        title="Агар хато босган бўлсангиз, орқага қайтариш"
+                      >
+                        (қайтариш)
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -584,10 +643,10 @@ export const App: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* BOTTOM iOS 26 LIQUID GLASS TAB BAR */}
+      {/* BOTTOM TAB BAR */}
       <nav className="fixed bottom-3 inset-x-3.5 z-40 max-w-md mx-auto">
-        <div className="liquid-glass rounded-3xl p-1.5 grid grid-cols-4 gap-1 backdrop-blur-2xl">
-          {[
+        {(() => {
+          const tabs = [
             { id: 'hatm', label: '30 Пора', icon: Layers },
             {
               id: 'my',
@@ -595,36 +654,47 @@ export const App: React.FC = () => {
               icon: BookOpen,
             },
             { id: 'rating', label: 'Топ-10', icon: Trophy },
-            { id: 'admin', label: 'Админ & Дуа', icon: Shield },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => {
-                  triggerHaptic('selection');
-                  setActiveTab(tab.id as ActiveTab);
-                }}
-                className={`py-2 px-2 rounded-2xl flex flex-col items-center justify-center gap-0.5 transition-all ${
-                  active
-                    ? 'bg-white/15 text-white shadow-inner border border-white/20'
-                    : 'text-white/55 hover:text-white/80'
-                }`}
-              >
-                <Icon
-                  className={`w-4 h-4 ${
-                    active ? 'text-amber-300' : 'text-white/55'
-                  }`}
-                />
-                <span className="text-[10px] font-bold tracking-tight">
-                  {tab.label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+            ...(user?.is_admin
+              ? [{ id: 'admin', label: 'Админ & Дуа', icon: Shield }]
+              : []),
+          ];
+
+          return (
+            <div
+              className="liquid-glass rounded-3xl p-1.5 grid gap-1 backdrop-blur-2xl"
+              style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+            >
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                const active = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('selection');
+                      setActiveTab(tab.id as ActiveTab);
+                    }}
+                    className={`py-2 px-2 rounded-2xl flex flex-col items-center justify-center gap-0.5 transition-all ${
+                      active
+                        ? 'bg-white/15 text-white shadow-inner border border-white/20'
+                        : 'text-white/55 hover:text-white/80'
+                    }`}
+                  >
+                    <Icon
+                      className={`w-4 h-4 ${
+                        active ? 'text-amber-300' : 'text-white/55'
+                      }`}
+                    />
+                    <span className="text-[10px] font-bold tracking-tight">
+                      {tab.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
       </nav>
     </div>
   );

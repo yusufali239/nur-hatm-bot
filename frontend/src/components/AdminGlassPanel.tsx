@@ -289,14 +289,41 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleUpdateSettings}
-          disabled={busy}
-          className="w-full py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-bold text-white transition-all"
-        >
-          💾 Созламаларни сақлаш
-        </button>
+        <div className="flex items-center gap-2 pt-1">
+          <button
+            type="button"
+            onClick={handleUpdateSettings}
+            disabled={busy}
+            className="flex-1 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-bold text-white transition-all"
+          >
+            💾 Созламаларни сақлаш
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              if (!window.confirm('Ҳақиқатан ҳам ушбу хатмдаги барча пораларни 0 дан бўшатиб, тозаламоқчимисиз?')) return;
+              triggerHaptic('warning');
+              setBusy(true);
+              try {
+                const res = await (await import('../lib/api')).resetHatmAdmin({
+                  admin_id: currentUser.id,
+                  hatm_id: hatm.id,
+                });
+                onHatmUpdated(res.active_hatm);
+                onNotify(res.message, 'success');
+              } catch (err: any) {
+                onNotify(err.message || 'Хатолик', 'error');
+              } finally {
+                setBusy(false);
+              }
+            }}
+            disabled={busy}
+            className="px-3 py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/30 text-xs font-bold text-rose-200 transition-all flex items-center gap-1 shrink-0"
+          >
+            <RefreshCcw className="w-3.5 h-3.5" />
+            <span>0 дан тозалаш</span>
+          </button>
+        </div>
       </div>
 
       {/* 3. Force-Free Occupied Juzs */}

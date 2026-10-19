@@ -30,17 +30,38 @@ from backend.services import (
     get_or_create_user,
     perform_admin_dua,
     release_user_juzs,
+    reset_current_hatm_data,
     seed_demo_data_if_empty,
     serialize_hatm,
     trigger_debounced_channel_sync,
+    uncomplete_user_juzs,
 )
 from bot.handlers import setup_bot
+import httpx
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s",
 )
 logger = logging.getLogger("nur_hatm.main")
+
+
+async def render_keep_alive_loop(stop_event: asyncio.Event) -> None:
+    """
+    Prevents Render.com Free Tier spin-down by sending a lightweight ping
+    every 10 minutes to the server's own health endpoint.
+    """
+    await asyncio.sleep(60)  # Wait for startup
+    while not stop_event.is_set():
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.get(f"http://127.0.0.1:{settings.PORT}/api/health")
+        except Exception as exc:
+            logger.debug(f"Keep-alive ping note: {exc}")
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=600.0)
+        except asyncio.TimeoutError:
+            pass
 
 
 @asynccontextmanager
@@ -51,6 +72,7 @@ async def lifespan(app: FastAPI):
 
     stop_event = asyncio.Event()
     worker_task = asyncio.create_task(expiration_worker_loop(stop_event))
+    keepalive_task = asyncio.create_task(render_keep_alive_loop(stop_event))
 
     bot_pair = setup_bot()
     polling_task: Optional[asyncio.Task] = None
@@ -65,6 +87,7 @@ async def lifespan(app: FastAPI):
 
     stop_event.set()
     worker_task.cancel()
+    keepalive_task.cancel()
     if polling_task:
         polling_task.cancel()
     if bot_pair:
@@ -234,6 +257,35 @@ async def api_release_juzs(req: ActionJuzRequest, db: AsyncSession = Depends(get
         processed=released,
         points_delta=0,
         message=f"{nums_str} бошқа ўқувчилар учун бўшатилди.",
+        hatm=serialize_hatm(hatm),
+        user=UserProfileSchema.model_validate(user),
+    )
+
+
+@app.post("/api/juz/uncomplete", response_model=ActionJuzResponse)
+async def api_uncomplete_juzs(req: ActionJuzRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Rollback accidental [Ўқидим] click:
+    Reverts status from DONE back to BOOKED, restores timer, deducts awarded points.
+    """
+    reverted, points_deducted, hatm, user = await uncomplete_user_juzs(
+        session=db,
+        user_id=req.user_id,
+        juz_numbers=req.juz_numbers,
+        hatm_id=req.hatm_id,
+    )
+    if not reverted:
+        raise HTTPException(
+            status_code=400,
+            detail="Бекор қилиш учун мос келувчи ўқилган пора топилмади.",
+        )
+
+    nums_str = ", ".join(f"{n}-пора" for n in reverted)
+    return ActionJuzResponse(
+        success=True,
+        processed=reverted,
+        points_delta=-points_deducted,
+        message=f"{nums_str} қайтадан «Ўқилмоқда» ҳолатига қайтарилди.",
         hatm=serialize_hatm(hatm),
         user=UserProfileSchema.model_validate(user),
     )
@@ -426,4 +478,18 @@ async def api_admin_manage_admins(
         "success": True,
         "message": msg,
         "admins": [UserProfileSchema.model_validate(a) for a in admins],
+    }
+
+
+@app.post("/api/admin/reset-hatm")
+async def api_admin_reset_hatm(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
+    """
+    Cleans active Hatm: resets all 30 Juzs back to FREE for a fresh real-user start.
+    """
+    await verify_admin_or_demo(db, req.admin_id)
+    hatm = await reset_current_hatm_data(db, req.hatm_id)
+    return {
+        "success": True,
+        "message": f"🧹 {hatm.title} барча 30 та пораси бўшатилди ва тозаланди!",
+        "active_hatm": serialize_hatm(hatm),
     }

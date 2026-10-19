@@ -124,74 +124,23 @@ async def get_or_create_user(
 
 async def seed_demo_data_if_empty(session: AsyncSession) -> None:
     """
-    Creates initial active Hatm #1 with 30 Juzs and realistic initial participants
-    on first boot so the Mini App immediately shines with Liquid Glass cards & Leaderboard.
+    Creates initial active Hatm #1 with 30 clean free Juzs and registers super admins.
+    No fake bot readers are added, ensuring a pristine real-user experience from day one.
     """
     stmt = select(func.count(Hatm.id))
     count = (await session.execute(stmt)).scalar() or 0
     if count > 0:
         return
 
-    now = utcnow()
-    demo_users = [
-        User(
-            id=900001,
-            name="Ҳумайро",
-            username="humayro_qoriya",
-            total_hatm=14,
-            total_juz=142,
-            rating_points=1420,
-            is_admin=False,
-        ),
-        User(
-            id=900002,
-            name="Абдуллоҳ Қори",
-            username="abdulloh_nur",
-            total_hatm=11,
-            total_juz=98,
-            rating_points=980,
-            is_admin=False,
-        ),
-        User(
-            id=900003,
-            name="Муслимахон",
-            username="muslima_jannat",
-            total_hatm=9,
-            total_juz=84,
-            rating_points=840,
-            is_admin=False,
-        ),
-        User(
-            id=900004,
-            name="Иброҳимжон",
-            username="ibrohim_uz",
-            total_hatm=6,
-            total_juz=55,
-            rating_points=550,
-            is_admin=False,
-        ),
-        User(
-            id=900005,
-            name="Солиҳабону",
-            username="soliha_bonu",
-            total_hatm=5,
-            total_juz=41,
-            rating_points=410,
-            is_admin=False,
-        ),
-    ]
-    for u in demo_users:
-        session.add(u)
-
-    # Also ensure env super admins exist
+    # Ensure env super admins exist
     for idx, aid in enumerate(settings.admin_id_list):
         session.add(
             User(
                 id=aid,
-                name=f"Super Admin #{idx + 1}",
-                total_hatm=3,
-                total_juz=30,
-                rating_points=300,
+                name=f"Admin #{idx + 1}",
+                total_hatm=0,
+                total_juz=0,
+                rating_points=0,
                 is_admin=True,
                 is_super_admin=True,
             )
@@ -199,8 +148,8 @@ async def seed_demo_data_if_empty(session: AsyncSession) -> None:
 
     hatm = Hatm(
         number=1,
-        title="1-Хатми Қуръон • Жума Туҳфаси",
-        dedication="Барча ўтган мўмин-мусулмонлар руҳи покига ҳамда юртимиз тинчлиги ва баракаси учун бағишланади",
+        title="1-Хатми Қуръон",
+        dedication="Барча мўмин-мусулмонлар ҳаққига ҳамда юртимиз тинчлиги ва баракаси учун бағишланади",
         status=HatmStatus.ACTIVE.value,
         timer_hours=settings.DEFAULT_TIMER_HOURS,
     )
@@ -208,56 +157,16 @@ async def seed_demo_data_if_empty(session: AsyncSession) -> None:
     await session.flush()
 
     for num in range(1, 31):
-        if num in (1, 2, 3):
-            juz = Juz(
-                hatm_id=hatm.id,
-                number=num,
-                status=JuzStatus.DONE.value,
-                user_id=900001,
-                user_name="Ҳумайро",
-                booked_at=now - timedelta(hours=5),
-                completed_at=now - timedelta(hours=1),
-            )
-        elif num in (4, 5):
-            juz = Juz(
-                hatm_id=hatm.id,
-                number=num,
-                status=JuzStatus.DONE.value,
-                user_id=900002,
-                user_name="Абдуллоҳ Қори",
-                booked_at=now - timedelta(hours=4),
-                completed_at=now - timedelta(minutes=30),
-            )
-        elif num == 6:
-            juz = Juz(
-                hatm_id=hatm.id,
-                number=num,
-                status=JuzStatus.BOOKED.value,
-                user_id=900003,
-                user_name="Муслимахон",
-                booked_at=now - timedelta(hours=2),
-                expires_at=now + timedelta(hours=21, minutes=42),
-            )
-        elif num == 7:
-            juz = Juz(
-                hatm_id=hatm.id,
-                number=num,
-                status=JuzStatus.BOOKED.value,
-                user_id=900004,
-                user_name="Иброҳимжон",
-                booked_at=now - timedelta(hours=23, minutes=18),
-                expires_at=now + timedelta(minutes=42),  # < 1 hour left (shows red liquid pill!)
-            )
-        else:
-            juz = Juz(
+        session.add(
+            Juz(
                 hatm_id=hatm.id,
                 number=num,
                 status=JuzStatus.FREE.value,
             )
-        session.add(juz)
+        )
 
     await session.commit()
-    logger.info("Initialized Nur Hatm #1 with 30 Juzs and demo leaderboard.")
+    logger.info("Initialized clean Nur Hatm #1 with 30 free Juzs.")
 
 
 async def get_active_hatm(session: AsyncSession, hatm_id: Optional[int] = None) -> Hatm:
@@ -455,6 +364,16 @@ async def complete_user_juzs(
     if completed:
         trigger_debounced_channel_sync(hatm.id)
 
+        # Check if all 30 Juzs are now completed
+        done_count = sum(1 for j in hatm.juzs if j.status == JuzStatus.DONE.value)
+        if done_count == 30 and not hatm.dua_done:
+            for admin_id in settings.admin_id_list:
+                await notify_user_safe(
+                    admin_id,
+                    f"🎉 <b>{hatm.title} — Барча 30 та пора тўлиқ ўқилди!</b>\n\n"
+                    f"Аллоҳ қабул қилсин! Илтимос, Mini App орқали <b>[🔔 Хатм Дуа қилиш]</b> тугмасини босиб, хатмни дуо қилинг ва навбатдаги хатмни очинг.",
+                )
+
     return completed, points_earned, hatm, user
 
 
@@ -642,7 +561,97 @@ async def perform_admin_dua(
     else:
         trigger_debounced_channel_sync(hatm.id)
 
+    # Notify all participants of this Hatm about the Dua
+    distinct_user_ids = {j.user_id for j in hatm.juzs if j.user_id}
+    for uid in distinct_user_ids:
+        await notify_user_safe(
+            uid,
+            f"🤲 <b>Хатм Дуоси қилинди!</b>\n\n"
+            f"<b>{hatm.title}</b> якунланди ва дуоси қилинди.\n"
+            f"<i>«{hatm.dua_message}»</i>\n\n"
+            f"Аллоҳ таоло ўқиган пораларингизни даргоҳида ҳусни қабул айласин! ✨\n"
+            f"Янги очилган хатмда ҳам фаол иштирок этиб, савобларингизни зиёда қилинг!",
+        )
+
     return hatm, new_hatm
+
+
+async def uncomplete_user_juzs(
+    session: AsyncSession,
+    user_id: int,
+    juz_numbers: List[int],
+    hatm_id: Optional[int] = None,
+) -> Tuple[List[int], int, Hatm, User]:
+    """
+    Rollback accidental [Ўқидим] click:
+    Reverts status from DONE back to BOOKED, deducts +10 points, restores 24h timer.
+    """
+    user = await get_or_create_user(session, user_id)
+    hatm = await get_active_hatm(session, hatm_id)
+    now = utcnow()
+    expires = now + timedelta(hours=hatm.timer_hours)
+
+    unique_numbers = sorted({n for n in juz_numbers if 1 <= n <= 30})
+    reverted: List[int] = []
+
+    for num in unique_numbers:
+        stmt = (
+            update(Juz)
+            .where(
+                Juz.hatm_id == hatm.id,
+                Juz.number == num,
+                Juz.status == JuzStatus.DONE.value,
+                Juz.user_id == user_id,
+            )
+            .values(
+                status=JuzStatus.BOOKED.value,
+                completed_at=None,
+                expires_at=expires,
+            )
+        )
+        res = await session.execute(stmt)
+        if res.rowcount and res.rowcount > 0:
+            reverted.append(num)
+
+    points_deducted = len(reverted) * settings.POINTS_ON_COMPLETE
+    if reverted:
+        user.total_juz = max(0, user.total_juz - len(reverted))
+        user.rating_points = max(0, user.rating_points - points_deducted)
+
+    await session.commit()
+    await session.refresh(hatm, attribute_names=["juzs"])
+    await session.refresh(user)
+
+    if reverted:
+        trigger_debounced_channel_sync(hatm.id)
+
+    return reverted, points_deducted, hatm, user
+
+
+async def reset_current_hatm_data(session: AsyncSession, hatm_id: Optional[int] = None) -> Hatm:
+    """
+    Admin tool: Resets all 30 Juzs in the active Hatm to FREE,
+    allowing a completely clean start from scratch without demo artifacts.
+    """
+    hatm = await get_active_hatm(session, hatm_id)
+    stmt = (
+        update(Juz)
+        .where(Juz.hatm_id == hatm.id)
+        .values(
+            status=JuzStatus.FREE.value,
+            user_id=None,
+            user_name=None,
+            booked_at=None,
+            expires_at=None,
+            completed_at=None,
+            warning_sent=False,
+        )
+    )
+    await session.execute(stmt)
+    await session.commit()
+    await session.refresh(hatm, attribute_names=["juzs"])
+    trigger_debounced_channel_sync(hatm.id)
+    return hatm
 
 
 async def sweep_expired_juzs_once() -> int:
@@ -701,7 +710,7 @@ async def sweep_expired_juzs_once() -> int:
             for uid, jnums in expired_by_user.items():
                 user = await get_or_create_user(session, uid)
                 penalty = len(jnums) * settings.POINTS_ON_EXPIRE_PENALTY
-                user.rating_points = user.rating_points - penalty
+                user.rating_points = max(0, user.rating_points - penalty)
                 user.expired_count += len(jnums)
 
         await session.commit()

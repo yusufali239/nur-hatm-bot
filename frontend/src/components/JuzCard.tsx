@@ -39,9 +39,6 @@ export const JuzCard: React.FC<JuzCardProps> = ({
     if (isFree) {
       triggerHaptic('selection');
       onToggleSelect(juz.number);
-    } else if (isBooked && isMine) {
-      triggerHaptic('medium');
-      onQuickComplete(juz.number);
     } else {
       triggerHaptic('light');
     }

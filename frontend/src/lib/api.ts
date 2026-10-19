@@ -179,3 +179,35 @@ export async function manageAdminsRequest(
     body: JSON.stringify(payload),
   });
 }
+
+export async function uncompleteBookedJuzs(payload: {
+  user_id: number;
+  hatm_id?: number;
+  juz_numbers: number[];
+}) {
+  return request<{
+    success: boolean;
+    processed: number[];
+    points_delta: number;
+    message: string;
+    hatm: HatmData;
+    user: UserProfile;
+  }>('/juz/uncomplete', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resetHatmAdmin(payload: {
+  admin_id: number;
+  hatm_id?: number;
+}) {
+  return request<{
+    success: boolean;
+    message: string;
+    active_hatm: HatmData;
+  }>('/admin/reset-hatm', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
