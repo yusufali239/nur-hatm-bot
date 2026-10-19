@@ -43,7 +43,7 @@ from backend.services import (
     trigger_debounced_channel_sync,
     uncomplete_user_juzs,
 )
-from backend.auth import validate_init_data
+from backend.auth import DEV_USER_ID, authenticate
 from bot.handlers import setup_bot
 import httpx
 
@@ -147,7 +147,8 @@ async def health_check():
 
 @app.get("/api/state")
 async def get_full_state(
-    user_id: int = Query(default=777000, description="Telegram User ID"),
+    request: Request,
+    user_id: Optional[int] = Query(default=None, description="Telegram User ID (dev mode only)"),
     user_name: str = Query(default="Муслим Фозил", description="Telegram User Name"),
     username: Optional[str] = Query(default=None),
     hatm_id: Optional[int] = Query(default=None),
@@ -160,7 +161,10 @@ async def get_full_state(
     - Top-10 Leaderboard ('Жаннат боғининг энг фаоллари')
     - Recent Hatms history
     """
-    user = await get_or_create_user(db, user_id, user_name, username)
+    ident = authenticate(request, user_id, user_name, username)
+    user = await get_or_create_user(
+        db, ident.id, ident.name or user_name, ident.username or username
+    )
     hatm = await get_active_hatm(db, hatm_id)
     leaderboard = await get_leaderboard(db, limit=10)
     await db.commit()
@@ -198,16 +202,17 @@ async def get_full_state(
 
 
 @app.post("/api/juz/book", response_model=BookJuzResponse)
-async def api_book_juzs(req: BookJuzRequest, db: AsyncSession = Depends(get_db)):
+async def api_book_juzs(req: BookJuzRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """
     Multi-select unlimited booking! Users can book 1, 5, 10, or all 30 Juzs at once.
     Protected by atomic row-level SQL transaction (`WHERE status = 'free'`) + `UNIQUE(hatm_id, number)`.
     """
+    ident = authenticate(request, req.user_id, req.user_name, req.username)
     booked, conflict, hatm, user = await book_multiple_juzs(
         session=db,
-        user_id=req.user_id,
-        user_name=req.user_name,
-        username=req.username,
+        user_id=ident.id,
+        user_name=ident.name or req.user_name,
+        username=ident.username or req.username,
         juz_numbers=req.juz_numbers,
         hatm_id=req.hatm_id,
     )
@@ -238,14 +243,14 @@ async def api_book_juzs(req: BookJuzRequest, db: AsyncSession = Depends(get_db))
 
 
 @app.post("/api/juz/complete", response_model=ActionJuzResponse)
-async def api_complete_juzs(req: ActionJuzRequest, db: AsyncSession = Depends(get_db)):
+async def api_complete_juzs(req: ActionJuzRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """
     User taps [✅ Ўқидим] on one or multiple booked Juzs.
     Grants +10 rating points per Juz!
     """
     completed, points_earned, hatm, user = await complete_user_juzs(
         session=db,
-        user_id=req.user_id,
+        user_id=authenticate(request, req.user_id).id,
         juz_numbers=req.juz_numbers,
         hatm_id=req.hatm_id,
     )
@@ -267,13 +272,13 @@ async def api_complete_juzs(req: ActionJuzRequest, db: AsyncSession = Depends(ge
 
 
 @app.post("/api/juz/release", response_model=ActionJuzResponse)
-async def api_release_juzs(req: ActionJuzRequest, db: AsyncSession = Depends(get_db)):
+async def api_release_juzs(req: ActionJuzRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """
     User voluntarily cancels/releases their booked Juz back to FREE.
     """
     released, hatm, user = await release_user_juzs(
         session=db,
-        user_id=req.user_id,
+        user_id=authenticate(request, req.user_id).id,
         juz_numbers=req.juz_numbers,
         hatm_id=req.hatm_id,
     )
@@ -295,14 +300,14 @@ async def api_release_juzs(req: ActionJuzRequest, db: AsyncSession = Depends(get
 
 
 @app.post("/api/juz/uncomplete", response_model=ActionJuzResponse)
-async def api_uncomplete_juzs(req: ActionJuzRequest, db: AsyncSession = Depends(get_db)):
+async def api_uncomplete_juzs(req: ActionJuzRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """
     Rollback accidental [Ўқидим] click:
     Reverts status from DONE back to BOOKED, restores timer, deducts awarded points.
     """
     reverted, points_deducted, hatm, user = await uncomplete_user_juzs(
         session=db,
-        user_id=req.user_id,
+        user_id=authenticate(request, req.user_id).id,
         juz_numbers=req.juz_numbers,
         hatm_id=req.hatm_id,
     )
@@ -335,20 +340,30 @@ async def api_get_leaderboard(
 # 👑 LIQUID GLASS ADMIN ENDPOINTS
 # ==========================================
 
-async def verify_admin_or_demo(db: AsyncSession, admin_id: int) -> User:
-    user = await get_or_create_user(db, admin_id)
-    # Allow seamless testing in local/demo preview or if user is an admin
-    if not user.is_admin and admin_id not in settings.admin_id_list and admin_id != 777000:
+async def verify_admin(db: AsyncSession, request: Request, claimed_admin_id: Optional[int]) -> User:
+    """
+    Resolves the caller from signed Telegram initData and requires admin rights.
+    The built-in demo user is only accepted in dev mode, i.e. when no BOT_TOKEN is configured.
+    """
+    ident = authenticate(request, claimed_admin_id)
+    user = await get_or_create_user(db, ident.id, ident.name or "Муслим", ident.username)
+    allowed = (
+        user.is_admin
+        or ident.id in settings.admin_id_list
+        or (settings.dev_mode and ident.id == DEV_USER_ID)
+    )
+    if not allowed:
         raise HTTPException(status_code=403, detail="Фақат админлар учун рухсат берилган.")
     return user
 
 
 @app.get("/api/admin/overview")
 async def api_admin_overview(
-    admin_id: int = Query(default=777000),
+    request: Request,
+    admin_id: Optional[int] = Query(default=None),
     db: AsyncSession = Depends(get_db),
 ):
-    await verify_admin_or_demo(db, admin_id)
+    await verify_admin(db, request, admin_id)
     stmt = select(User).where(User.is_admin.is_(True)).order_by(User.is_super_admin.desc(), User.id)
     admins = (await db.execute(stmt)).scalars().all()
     hatm = await get_active_hatm(db)
@@ -360,15 +375,15 @@ async def api_admin_overview(
 
 
 @app.post("/api/admin/dua")
-async def api_admin_dua(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
+async def api_admin_dua(req: AdminActionRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """
     Manual Admin Dua button `[🔔 Хатм Дуа қилиш]` — Admin triggers this AT WILL,
     even if only 15/30 Juzs are completed!
     """
-    await verify_admin_or_demo(db, req.admin_id)
+    admin = await verify_admin(db, request, req.admin_id)
     finished_hatm, new_hatm = await perform_admin_dua(
         session=db,
-        admin_id=req.admin_id,
+        admin_id=admin.id,
         hatm_id=req.hatm_id,
         dua_message=req.dua_message,
         start_new_hatm=req.StartNewHatmAfterDua,
@@ -383,8 +398,8 @@ async def api_admin_dua(req: AdminActionRequest, db: AsyncSession = Depends(get_
 
 
 @app.post("/api/admin/new-hatm")
-async def api_admin_new_hatm(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
-    await verify_admin_or_demo(db, req.admin_id)
+async def api_admin_new_hatm(req: AdminActionRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    admin = await verify_admin(db, request, req.admin_id)
 
     max_num_stmt = select(func.max(Hatm.number))
     max_num = (await db.execute(max_num_stmt)).scalar() or 2598
@@ -425,8 +440,8 @@ async def api_admin_new_hatm(req: AdminActionRequest, db: AsyncSession = Depends
 
 
 @app.post("/api/admin/update-timer")
-async def api_admin_update_timer(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
-    await verify_admin_or_demo(db, req.admin_id)
+async def api_admin_update_timer(req: AdminActionRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    admin = await verify_admin(db, request, req.admin_id)
     hatm = await get_active_hatm(db, req.hatm_id)
     if req.timer_hours and 1 <= req.timer_hours <= 168:
         hatm.timer_hours = req.timer_hours
@@ -447,8 +462,8 @@ async def api_admin_update_timer(req: AdminActionRequest, db: AsyncSession = Dep
 
 
 @app.post("/api/admin/force-free-juz")
-async def api_admin_force_free_juz(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
-    await verify_admin_or_demo(db, req.admin_id)
+async def api_admin_force_free_juz(req: AdminActionRequest, request: Request, db: AsyncSession = Depends(get_db)):
+    admin = await verify_admin(db, request, req.admin_id)
     hatm = await get_active_hatm(db, req.hatm_id)
     if not req.juz_number or not (1 <= req.juz_number <= 30):
         raise HTTPException(status_code=400, detail="Пора рақами 1..30 бўлиши керак.")
@@ -480,11 +495,15 @@ async def api_admin_force_free_juz(req: AdminActionRequest, db: AsyncSession = D
 
 @app.post("/api/admin/manage-admins")
 async def api_admin_manage_admins(
+    req: AdminActionRequest,
+    request: Request,
     action: str = Query(..., pattern="^(add|remove)$"),
-    req: AdminActionRequest = None,
     db: AsyncSession = Depends(get_db),
 ):
-    await verify_admin_or_demo(db, req.admin_id)
+    caller = await verify_admin(db, request, req.admin_id)
+    # Same rule as the bot's /admins command: only Super Admins manage the admin list
+    if not (caller.is_super_admin or caller.id in settings.admin_id_list):
+        raise HTTPException(status_code=403, detail="Фақат Super Admin админларни бошқара олади.")
     if not req.target_user_id:
         raise HTTPException(status_code=400, detail="target_user_id киритилиши шарт.")
 
@@ -514,11 +533,11 @@ async def api_admin_manage_admins(
 
 
 @app.post("/api/admin/reset-hatm")
-async def api_admin_reset_hatm(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
+async def api_admin_reset_hatm(req: AdminActionRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """
     Cleans active Hatm: resets all 30 Juzs back to FREE for a fresh real-user start.
     """
-    await verify_admin_or_demo(db, req.admin_id)
+    admin = await verify_admin(db, request, req.admin_id)
     hatm = await reset_current_hatm_data(db, req.hatm_id)
     return {
         "success": True,
@@ -528,9 +547,9 @@ async def api_admin_reset_hatm(req: AdminActionRequest, db: AsyncSession = Depen
 
 
 @app.post("/api/admin/set-juz")
-async def api_admin_set_juz(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
+async def api_admin_set_juz(req: AdminActionRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Admin manual control: change any juz status, edit reader name, or clear."""
-    await verify_admin_or_demo(db, req.admin_id)
+    admin = await verify_admin(db, request, req.admin_id)
     if not req.juz_number or not (1 <= req.juz_number <= 30):
         raise HTTPException(status_code=400, detail="Пора рақами 1..30 бўлиши керак.")
     status = (req.juz_status or "free").lower()
@@ -553,9 +572,9 @@ async def api_admin_set_juz(req: AdminActionRequest, db: AsyncSession = Depends(
 
 
 @app.post("/api/admin/delete-hatm")
-async def api_admin_delete_hatm(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
+async def api_admin_delete_hatm(req: AdminActionRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Admin deletes an entire Hatm cycle and its channel post."""
-    await verify_admin_or_demo(db, req.admin_id)
+    admin = await verify_admin(db, request, req.admin_id)
     if not req.hatm_id:
         raise HTTPException(status_code=400, detail="hatm_id кўрсатилиши шарт.")
     try:
@@ -572,9 +591,9 @@ async def api_admin_delete_hatm(req: AdminActionRequest, db: AsyncSession = Depe
 
 
 @app.post("/api/admin/update-hatm")
-async def api_admin_update_hatm(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
+async def api_admin_update_hatm(req: AdminActionRequest, request: Request, db: AsyncSession = Depends(get_db)):
     """Admin updates hatm title, dedication, timer hours, or status."""
-    await verify_admin_or_demo(db, req.admin_id)
+    admin = await verify_admin(db, request, req.admin_id)
     hatm = await admin_update_hatm(
         session=db,
         hatm_id=req.hatm_id,

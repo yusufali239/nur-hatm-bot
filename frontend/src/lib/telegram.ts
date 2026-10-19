@@ -11,6 +11,8 @@ declare global {
         expand: () => void;
         setHeaderColor?: (color: string) => void;
         setBackgroundColor?: (color: string) => void;
+        /** Raw signed initData string; the backend verifies its signature. */
+        initData?: string;
         initDataUnsafe?: {
           user?: {
             id: number;
@@ -41,6 +43,11 @@ export function initTelegramWebApp(): void {
       // Ignore in browser mode
     }
   }
+}
+
+/** Signed Telegram initData (empty outside Telegram, e.g. in a plain browser during dev). */
+export function getInitData(): string {
+  return window.Telegram?.WebApp?.initData || '';
 }
 
 export function triggerHaptic(

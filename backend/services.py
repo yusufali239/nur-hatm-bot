@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Tuple
@@ -391,7 +392,7 @@ async def complete_user_juzs(
             for admin_id in settings.admin_id_list:
                 await notify_user_safe(
                     admin_id,
-                    f"🎉 <b>{hatm.title}</b> — 30/30 ўқилди. Дуо қилиш мумкин.",
+                    f"🎉 <b>{html.escape(hatm.title, quote=False)}</b> — 30/30 ўқилди. Дуо қилиш мумкин.",
                 )
 
     return completed, points_earned, hatm, user
@@ -587,7 +588,7 @@ async def perform_admin_dua(
     for uid in distinct_user_ids:
         await notify_user_safe(
             uid,
-            f"🤲 <b>{hatm.title}</b> дуоси қилинди. Аллоҳ қабул қилсин!",
+            f"🤲 <b>{html.escape(hatm.title, quote=False)}</b> дуоси қилинди. Аллоҳ қабул қилсин!",
         )
 
     return hatm, new_hatm

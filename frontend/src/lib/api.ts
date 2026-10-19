@@ -1,4 +1,5 @@
 import { FullStateResponse, LeaderboardData, UserProfile, HatmData } from '../types';
+import { getInitData } from './telegram';
 
 const getApiBase = (): string => {
   const envUrl = (import.meta as any).env?.VITE_API_URL;
@@ -23,11 +24,14 @@ const API_BASE = getApiBase();
 async function request<T>(path: string, options?: RequestInit, retries = 1): Promise<T> {
   const url = `${API_BASE}${path}`;
   try {
+    const initData = getInitData();
     const res = await fetch(url, {
+      ...options,
       headers: {
         'Content-Type': 'application/json',
+        // Signed by Telegram; the backend derives the user (and admin rights) from it
+        ...(initData ? { 'X-Telegram-Init-Data': initData } : {}),
       },
-      ...options,
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {

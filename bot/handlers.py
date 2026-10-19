@@ -1,4 +1,6 @@
+import asyncio
 import logging
+from html import escape as _html_escape
 from typing import Optional
 
 from aiogram import Bot, Dispatcher, F, Router
@@ -33,6 +35,11 @@ from bot.channel_manager import (
 
 logger = logging.getLogger("nur_hatm.bot.handlers")
 router = Router()
+
+
+def esc(value) -> str:
+    """Escape user-controlled text before inserting it into HTML parse_mode messages."""
+    return _html_escape(str(value or ""), quote=False)
 
 
 def get_main_liquid_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
@@ -77,7 +84,7 @@ def format_main_welcome_text(user: User, hatm) -> str:
     done_c = sum(1 for j in hatm.juzs if j.status == JuzStatus.DONE.value)
     free_c = sum(1 for j in hatm.juzs if j.status == JuzStatus.FREE.value)
     return (
-        f"🌙 <b>{hatm.title}</b>\n\n"
+        f"🌙 <b>{esc(hatm.title)}</b>\n\n"
         f"📊 {done_c}/30 ўқилди • {free_c} та бўш\n"
         f"🌟 Сизда: <b>{user.rating_points} балл</b> ({user.total_juz} пора)"
     )
@@ -148,7 +155,7 @@ async def cmd_admins(message: Message) -> None:
             target_user.is_admin = True
             await session.commit()
             await message.answer(
-                f"✅ <b>{target_user.name}</b> (<code>{target_id}</code>) админ этиб тайинланди!",
+                f"✅ <b>{esc(target_user.name)}</b> (<code>{target_id}</code>) админ этиб тайинланди!",
                 parse_mode=ParseMode.HTML,
             )
             return
@@ -178,7 +185,7 @@ async def cmd_admins(message: Message) -> None:
         admins = (await session.execute(stmt)).scalars().all()
 
         admin_lines = [
-            f"{'👑' if a.is_super_admin else '🛡'} <b>{a.name}</b> — <code>{a.id}</code>"
+            f"{'👑' if a.is_super_admin else '🛡'} <b>{esc(a.name)}</b> — <code>{a.id}</code>"
             for a in admins
         ]
         text = (
@@ -204,7 +211,7 @@ async def cb_show_leaderboard(callback: CallbackQuery) -> None:
     for u in lb.top_users:
         m = medals.get(u.rank, f"<b>{u.rank}.</b>")
         lines.append(
-            f"{m} <b>{u.name}</b> — {u.total_juz} пора • <b>{u.rating_points} балл</b>"
+            f"{m} <b>{esc(u.name)}</b> — {u.total_juz} пора • <b>{u.rating_points} балл</b>"
         )
 
     if not lb.top_users:
@@ -263,7 +270,7 @@ async def cb_my_juzs(callback: CallbackQuery) -> None:
     done_str = ", ".join(f"{j.number}-пора" for j in my_done) if my_done else "Йўқ"
 
     text = (
-        f"👤 <b>{user.name} — Шахсий кабинет</b>\n\n"
+        f"👤 <b>{esc(user.name)} — Шахсий кабинет</b>\n\n"
         f"🌟 Рейтинг: <b>{user.rating_points} балл</b>\n"
         f"📖 Жами ўқилган: <b>{user.total_juz} пора</b> ({user.total_hatm} хатм)\n\n"
         f"⏳ <b>Ҳозир сизда:</b> {booked_str}\n"
@@ -359,7 +366,7 @@ async def cb_admin_dua_confirm(callback: CallbackQuery) -> None:
     )
     await callback.message.edit_text(
         f"🔔 <b>Хатм Дуоси</b>\n\n"
-        f"Жорий хатм: <b>{hatm.title}</b> ({done_c}/30 ўқилди)\n\n"
+        f"Жорий хатм: <b>{esc(hatm.title)}</b> ({done_c}/30 ўқилди)\n\n"
         f"Хатм Дуосини тасдиқлайсизми? Барча иштирокчиларга дуо юборилади ва янги хатм очилади.",
         parse_mode=ParseMode.HTML,
         reply_markup=kb,
@@ -384,9 +391,9 @@ async def cb_admin_dua_execute(callback: CallbackQuery) -> None:
         )
 
     await callback.message.edit_text(
-        f"🤲 <b>{finished_hatm.title} учун Хатм Дуоси қилинди!</b>\n\n"
-        f"<i>«{finished_hatm.dua_message}»</i>\n\n"
-        f"✨ Янги <b>{new_hatm.title if new_hatm else ''}</b> очилди!",
+        f"🤲 <b>{esc(finished_hatm.title)} учун Хатм Дуоси қилинди!</b>\n\n"
+        f"<i>«{esc(finished_hatm.dua_message)}»</i>\n\n"
+        f"✨ Янги <b>{esc(new_hatm.title) if new_hatm else ''}</b> очилди!",
         parse_mode=ParseMode.HTML,
         reply_markup=get_main_liquid_keyboard(is_admin=True),
     )

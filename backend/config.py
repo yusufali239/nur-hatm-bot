@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     PORT: int = 8000
     CORS_ORIGINS: str = "*"
 
+    # How long a signed Telegram initData stays valid (a Mini App session can stay open for days)
+    INIT_DATA_MAX_AGE_SECONDS: int = 3 * 24 * 3600
+
+    @property
+    def dev_mode(self) -> bool:
+        """True when no real BOT_TOKEN is configured: Telegram signature checks are skipped."""
+        token = self.BOT_TOKEN.strip()
+        return not token or token.endswith("your_telegram_bot_token_here")
+
     @property
     def admin_id_list(self) -> List[int]:
         ids: List[int] = []

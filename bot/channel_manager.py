@@ -1,4 +1,5 @@
 import logging
+from html import escape as _html_escape
 from typing import Optional
 
 from aiogram import Bot
@@ -19,6 +20,11 @@ from backend.services import (
 logger = logging.getLogger("nur_hatm.bot.channel")
 
 
+def esc(value) -> str:
+    """Escape user-controlled text before inserting it into HTML parse_mode messages."""
+    return _html_escape(str(value or ""), quote=False)
+
+
 def build_channel_hatm_text(hatm, top_user: Optional[User]) -> str:
     """
     Generates a clean, Apple-style structured Telegram Channel post for the live Hatm board,
@@ -35,10 +41,10 @@ def build_channel_hatm_text(hatm, top_user: Optional[User]) -> str:
     bar = (bar + "⬜" * 10)[:10]
 
     lines = [
-        f"🌙 <b>{hatm.title}</b>",
+        f"🌙 <b>{esc(hatm.title)}</b>",
     ]
     if hatm.dedication:
-        lines.append(f"<i>«{hatm.dedication}»</i>\n")
+        lines.append(f"<i>«{esc(hatm.dedication)}»</i>\n")
     else:
         lines.append("")
 
@@ -51,10 +57,10 @@ def build_channel_hatm_text(hatm, top_user: Optional[User]) -> str:
     juz_lines = []
     for j in sorted_juzs:
         if j.status == JuzStatus.DONE.value:
-            reader = j.user_name or "Муслим"
+            reader = esc(j.user_name or "Муслим")
             juz_lines.append(f"✅ <b>{j.number:02d}-пора:</b> {reader} <i>(Ўқилди)</i>")
         elif j.status == JuzStatus.BOOKED.value:
-            reader = j.user_name or "Муслим"
+            reader = esc(j.user_name or "Муслим")
             juz_lines.append(f"🟢 <b>{j.number:02d}-пора:</b> {reader} <i>(Ўқилмоқда ⏳)</i>")
         else:
             juz_lines.append(f"⚪ <b>{j.number:02d}-пора:</b> <i>Бўш — танлаш мумкин</i>")
@@ -66,7 +72,7 @@ def build_channel_hatm_text(hatm, top_user: Optional[User]) -> str:
         lines.append("🤲 <b>Ушбу Хатми Қуръон дуоси қилинди! Аллоҳ қабул айласин!</b>\n")
 
     if top_user and top_user.total_juz > 0:
-        lines.append(f"🏆 Top: {top_user.name} — {top_user.total_juz} пора ({top_user.rating_points} балл)")
+        lines.append(f"🏆 Top: {esc(top_user.name)} — {top_user.total_juz} пора ({top_user.rating_points} балл)")
 
     return "\n".join(lines)
 

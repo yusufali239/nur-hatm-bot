@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Clock, AlertTriangle } from 'lucide-react';
 
 interface TimerProps {
@@ -25,14 +25,25 @@ export const Timer: React.FC<TimerProps> = ({
     return Math.max(0, diff);
   });
 
+  // Keep the latest callback in a ref so the interval isn't recreated on every render,
+  // and make sure onExpire fires once per expiry instead of every second.
+  const onExpireRef = useRef(onExpire);
+  useEffect(() => {
+    onExpireRef.current = onExpire;
+  }, [onExpire]);
+
   useEffect(() => {
     if (!expiresAt) return;
+    let fired = false;
 
     const updateTimer = () => {
       const diff = Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000);
       if (diff <= 0) {
         setRemainingSec(0);
-        onExpire?.();
+        if (!fired) {
+          fired = true;
+          onExpireRef.current?.();
+        }
       } else {
         setRemainingSec(diff);
       }
@@ -41,7 +52,7 @@ export const Timer: React.FC<TimerProps> = ({
     updateTimer();
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
-  }, [expiresAt, onExpire]);
+  }, [expiresAt]);
 
   if (!expiresAt) return null;
 
