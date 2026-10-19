@@ -147,9 +147,9 @@ async def seed_demo_data_if_empty(session: AsyncSession) -> None:
         )
 
     hatm = Hatm(
-        number=1,
-        title="1-Хатми Қуръон",
-        dedication="Барча мўмин-мусулмонлар ҳаққига ҳамда юртимиз тинчлиги ва баракаси учун бағишланади",
+        number=2599,
+        title="2599-Хатм",
+        dedication="Барча мўмин-мусулмонлар ҳаққига бағишланади",
         status=HatmStatus.ACTIVE.value,
         timer_hours=settings.DEFAULT_TIMER_HOURS,
     )
@@ -166,7 +166,7 @@ async def seed_demo_data_if_empty(session: AsyncSession) -> None:
         )
 
     await session.commit()
-    logger.info("Initialized clean Nur Hatm #1 with 30 free Juzs.")
+    logger.info("Initialized clean Nur Hatm starting at #2599 with 30 free Juzs.")
 
 
 async def get_active_hatm(session: AsyncSession, hatm_id: Optional[int] = None) -> Hatm:
@@ -188,15 +188,15 @@ async def get_active_hatm(session: AsyncSession, hatm_id: Optional[int] = None) 
     hatm = result.scalar_one_or_none()
 
     if not hatm:
-        # Create a new active Hatm automatically if none exists
+        # Create a new active Hatm automatically if none exists (starts at 2599)
         max_num_stmt = select(func.max(Hatm.number))
-        max_num = (await session.execute(max_num_stmt)).scalar() or 0
-        next_num = max_num + 1
+        max_num = (await session.execute(max_num_stmt)).scalar() or 2598
+        next_num = max(max_num + 1, 2599)
 
         hatm = Hatm(
             number=next_num,
-            title=f"{next_num}-Хатми Қуръон",
-            dedication="Аллоҳ розилиги учун хатми Қуръон",
+            title=f"{next_num}-Хатм",
+            dedication="Барча мўмин-мусулмонлар ҳаққига бағишланади",
             status=HatmStatus.ACTIVE.value,
             timer_hours=settings.DEFAULT_TIMER_HOURS,
         )
@@ -533,11 +533,11 @@ async def perform_admin_dua(
 
     new_hatm: Optional[Hatm] = None
     if start_new_hatm:
-        next_num = hatm.number + 1
+        next_num = max(hatm.number + 1, 2599)
         new_hatm = Hatm(
             number=next_num,
-            title=f"{next_num}-Хатми Қуръон • Нуроний Давра",
-            dedication="Барча иштирокчилар ва уларнинг оила аъзолари ҳаққига дуои хайр",
+            title=f"{next_num}-Хатм",
+            dedication="Барча мўмин-мусулмонлар ҳаққига бағишланади",
             status=HatmStatus.ACTIVE.value,
             timer_hours=hatm.timer_hours,
         )

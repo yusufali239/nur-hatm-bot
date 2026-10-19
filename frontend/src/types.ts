@@ -69,6 +69,9 @@ export interface RecentHatmSummary {
   dua_done: boolean;
   dua_at: string | null;
   dua_message: string | null;
+  done_count?: number;
+  free_count?: number;
+  booked_count?: number;
 }
 
 export interface FullStateResponse {

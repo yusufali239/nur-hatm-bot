@@ -141,8 +141,13 @@ async def get_full_state(
     leaderboard = await get_leaderboard(db, limit=10)
     await db.commit()
 
-    # Recent Hatms list for switching or viewing Dua history
-    recent_stmt = select(Hatm).order_by(Hatm.id.desc()).limit(8)
+    # Recent Hatms list with counts for the multi-hatm switcher
+    recent_stmt = (
+        select(Hatm)
+        .options(selectinload(Hatm.juzs))
+        .order_by(Hatm.id.desc())
+        .limit(10)
+    )
     recent_hatms = (await db.execute(recent_stmt)).scalars().all()
 
     return {
@@ -158,6 +163,9 @@ async def get_full_state(
                 "dua_done": h.dua_done,
                 "dua_at": h.dua_at,
                 "dua_message": h.dua_message,
+                "done_count": sum(1 for j in h.juzs if j.status == JuzStatus.DONE.value),
+                "free_count": sum(1 for j in h.juzs if j.status == JuzStatus.FREE.value),
+                "booked_count": sum(1 for j in h.juzs if j.status == JuzStatus.BOOKED.value),
             }
             for h in recent_hatms
         ],
@@ -355,12 +363,12 @@ async def api_admin_new_hatm(req: AdminActionRequest, db: AsyncSession = Depends
     await verify_admin_or_demo(db, req.admin_id)
 
     max_num_stmt = select(func.max(Hatm.number))
-    max_num = (await db.execute(max_num_stmt)).scalar() or 0
-    next_num = max_num + 1
+    max_num = (await db.execute(max_num_stmt)).scalar() or 2598
+    next_num = max(max_num + 1, 2599)
 
     timer_h = req.timer_hours if req.timer_hours and 1 <= req.timer_hours <= 168 else settings.DEFAULT_TIMER_HOURS
-    title = (req.title or "").strip() or f"{next_num}-Хатми Қуръон • Нуроний Давра"
-    dedication = (req.dedication or "").strip() or "Барча мўмин-мусулмонлар ҳаққига дуои хайр"
+    title = (req.title or "").strip() or f"{next_num}-Хатм"
+    dedication = (req.dedication or "").strip() or "Барча мўмин-мусулмонлар ҳаққига бағишланади"
 
     new_hatm = Hatm(
         number=next_num,

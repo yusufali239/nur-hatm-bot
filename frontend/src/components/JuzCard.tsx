@@ -1,8 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Check, Sparkles, UserCheck } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { JuzItem } from '../types';
-import { Timer } from './Timer';
 import { triggerHaptic } from '../lib/telegram';
 
 interface JuzCardProps {
@@ -119,34 +118,23 @@ export const JuzCard: React.FC<JuzCardProps> = ({
         )}
       </div>
 
-      {/* Middle / Bottom Content */}
-      <div className="relative z-10 mt-2 flex flex-col gap-1.5">
+      {/* Minimalist Bottom Status */}
+      <div className="relative z-10 mt-2 flex flex-col justify-end">
         {isFree && (
-          <div className="flex items-center justify-between">
-            <span
-              className={`text-[11px] font-medium ${
-                isSelected ? 'text-sky-200 font-semibold' : 'text-white/45'
-              }`}
-            >
-              {isSelected ? '✓ Танланди' : 'Бўш • Танлаш'}
-            </span>
-          </div>
+          <span
+            className={`text-[11px] font-semibold ${
+              isSelected ? 'text-sky-300' : 'text-white/40'
+            }`}
+          >
+            {isSelected ? '✓ Танланди' : 'Бўш'}
+          </span>
         )}
 
         {isBooked && (
-          <>
-            <div className="flex items-center gap-1 text-[11px] text-emerald-100/90 font-medium truncate">
-              <UserCheck className="w-3 h-3 text-emerald-300 shrink-0" />
-              <span className="truncate">{juz.user_name || 'Муслим'}</span>
-            </div>
-
-            <div className="flex items-center justify-between gap-1">
-              <Timer
-                expiresAt={juz.expires_at}
-                compact
-                onExpire={onExpireRefresh}
-              />
-            </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] font-semibold text-emerald-200 truncate">
+              {juz.user_name || 'Муслим'}
+            </span>
 
             {isMine && (
               <button
@@ -156,25 +144,18 @@ export const JuzCard: React.FC<JuzCardProps> = ({
                   triggerHaptic('success');
                   onQuickComplete(juz.number);
                 }}
-                className="mt-0.5 w-full py-1 px-2 rounded-lg bg-gradient-to-r from-emerald-400 to-teal-400 text-slate-950 font-bold text-[11px] shadow-[0_0_14px_rgba(16,185,129,0.5)] hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-1"
+                className="w-full py-1 px-1.5 rounded-lg bg-emerald-400 text-slate-950 font-bold text-[10px] shadow-sm hover:brightness-110 active:scale-95 transition-all text-center"
               >
-                <span>✅ Ўқидим</span>
-                <span className="text-[9px] opacity-80">(+10)</span>
+                Ўқидим (+10)
               </button>
             )}
-          </>
+          </div>
         )}
 
         {isDone && (
-          <div className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-100 truncate">
-              <Sparkles className="w-3 h-3 text-amber-300 shrink-0" />
-              <span className="truncate">{juz.user_name || 'Муслим'}</span>
-            </div>
-            <span className="text-[10px] text-amber-200/75 font-medium">
-              Ўқилди • Аллоҳ қабул қилсин
-            </span>
-          </div>
+          <span className="text-[11px] font-semibold text-amber-200 truncate">
+            {juz.user_name || 'Ўқилди'}
+          </span>
         )}
       </div>
     </motion.div>

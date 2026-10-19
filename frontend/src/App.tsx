@@ -56,23 +56,30 @@ export const App: React.FC = () => {
     }, 3800);
   }, []);
 
+  const [activeHatmId, setActiveHatmId] = useState<number | null>(null);
+
   const loadState = useCallback(
-    async (silent = false) => {
+    async (silent = false, targetHatmId?: number | null) => {
       if (!silent) setLoading(true);
       try {
+        const idToFetch = targetHatmId !== undefined ? targetHatmId : activeHatmId;
         const data = await fetchAppState(
           identity.id,
           identity.name,
-          identity.username
+          identity.username,
+          idToFetch
         );
         setState(data);
+        if (data.hatm) {
+          setActiveHatmId(data.hatm.id);
+        }
       } catch (err: any) {
         showToast(err.message || 'Сервер билан боғланишда хатолик', 'error');
       } finally {
         if (!silent) setLoading(false);
       }
     },
-    [identity, showToast]
+    [identity, activeHatmId, showToast]
   );
 
   useEffect(() => {
@@ -315,37 +322,69 @@ export const App: React.FC = () => {
           </div>
         </header>
 
-        {/* Active My Timers Banner (always visible if user has active booked Juzs!) */}
+        {/* Multiple Hatms Selector Tabs (Scrollable list starting at 2599...) */}
+        {state?.recent_hatms && state.recent_hatms.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-3.5 no-scrollbar">
+            {state.recent_hatms.map((h) => {
+              const isSelected = hatm?.id === h.id;
+              return (
+                <button
+                  key={h.id}
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('selection');
+                    loadState(false, h.id);
+                  }}
+                  className={`px-3 py-1.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-amber-400 text-slate-950 shadow-md font-extrabold'
+                      : 'bg-white/5 border border-white/10 text-white/70 hover:text-white'
+                  }`}
+                >
+                  <span>{h.number}-Хатм</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                      isSelected
+                        ? 'bg-black/20 text-slate-950 font-bold'
+                        : 'bg-white/10 text-white/50'
+                    }`}
+                  >
+                    {h.done_count !== undefined ? `${h.done_count}/30` : h.status}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Unified Single Timer Banner (Shows for current user if they have booked Juzs in this Hatm) */}
         {myBookedJuzs.length > 0 && activeTab === 'hatm' && (
           <motion.div
             initial={{ opacity: 0, y: -6 }}
             animate={{ opacity: 1, y: 0 }}
-            className="juz-glass-booked p-3.5 mb-3.5 space-y-2.5"
+            className="juz-glass-booked p-3.5 mb-3.5 flex items-center justify-between gap-3"
           >
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-col gap-0.5 min-w-0">
               <div className="text-xs font-bold text-emerald-100 flex items-center gap-1.5">
-                <span>⏳ Сиз олган поралар ({myBookedJuzs.length} та):</span>
+                <span>Сизда {myBookedJuzs.length} та пора ({myBookedJuzs.map((j) => j.number).join(', ')})</span>
               </div>
-              <button
-                type="button"
-                onClick={() => handleCompleteJuzs(myBookedJuzs.map((j) => j.number))}
-                disabled={submitting}
-                className="px-3 py-1 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-300 text-slate-950 font-extrabold text-[11px] shadow-[0_0_16px_rgba(16,185,129,0.5)] active:scale-95 transition-all"
-              >
-                ✅ Барчасини ўқидим (+{myBookedJuzs.length * 10} балл)
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-1.5">
-              {myBookedJuzs.map((j) => (
+              <div className="flex items-center gap-1.5">
+                {/* Single unified countdown pill */}
                 <Timer
-                  key={j.number}
-                  juzNumber={j.number}
-                  expiresAt={j.expires_at}
+                  expiresAt={myBookedJuzs[0]?.expires_at}
                   onExpire={() => loadState(true)}
                 />
-              ))}
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={() => handleCompleteJuzs(myBookedJuzs.map((j) => j.number))}
+              disabled={submitting}
+              className="px-3 py-2 rounded-xl bg-gradient-to-r from-emerald-400 to-teal-300 text-slate-950 font-extrabold text-xs shadow-md active:scale-95 transition-all shrink-0"
+            >
+              Ўқидим (+{myBookedJuzs.length * 10})
+            </button>
           </motion.div>
         )}
 
@@ -358,19 +397,19 @@ export const App: React.FC = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] uppercase tracking-widest text-amber-300/90 font-bold">
-                      ЖОРИЙ ХАТМИ ҚУРЪОН
+                      {hatm.number}-ХАТМ
                     </span>
                     <button
                       type="button"
                       onClick={() => {
                         triggerHaptic('light');
                         const shareText = encodeURIComponent(
-                          `🌙 ${hatm.title}\n\nҚуръони Карим хатмида яна ${hatm.free_count} та бўш пора қолди. Сиз ҳам савобга шерик бўлинг!\n👉 https://t.me/share/url?url=https://nur-hatm-bot.vercel.app`
+                          `🌙 ${hatm.title}\n\nҚуръони Карим хатмида яна ${hatm.free_count} та бўш пора қолди. Савобга шерик бўлинг!\n👉 https://nur-hatm-bot.vercel.app`
                         );
                         window.open(`https://t.me/share/url?url=https://nur-hatm-bot.vercel.app&text=${shareText}`, '_blank');
                       }}
                       className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-[10px] font-semibold text-amber-200 flex items-center gap-1 transition-all"
-                      title="Хатмни дўстларга улашиш"
+                      title="Улашиш"
                     >
                       <Share2 className="w-3 h-3" />
                       <span>Улашиш</span>
@@ -380,7 +419,7 @@ export const App: React.FC = () => {
                     {hatm.title}
                   </h2>
                   {hatm.dedication && (
-                    <p className="text-[11px] text-white/60 mt-0.5 line-clamp-2">
+                    <p className="text-[11px] text-white/60 mt-0.5 line-clamp-1">
                       «{hatm.dedication}»
                     </p>
                   )}
@@ -390,7 +429,7 @@ export const App: React.FC = () => {
                     {hatm.done_count}/30
                   </div>
                   <div className="text-[10px] text-white/50 font-medium">
-                    {progressPct}% якунланди
+                    {progressPct}% ўқилди
                   </div>
                 </div>
               </div>
@@ -401,11 +440,11 @@ export const App: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <span className="text-lg">🎉</span>
                     <div>
-                      <span className="font-extrabold text-white">Алҳамдулиллаҳ! 30 та пора тўлиқ ўқилди!</span>
+                      <span className="font-extrabold text-white">30 та пора тўлиқ ўқилди!</span>
                       <div className="text-[10px] opacity-80">
                         {hatm.dua_done
-                          ? 'Ушбу хатм дуоси қилинди. Барча иштирокчиларга ташаккур!'
-                          : 'Админ томонидан Хатм Дуоси ўқилиши кутилмоқда...'}
+                          ? 'Хатм дуоси қилинди. Аллоҳ қабул қилсин!'
+                          : 'Хатм Дуоси кутилмоқда...'}
                       </div>
                     </div>
                   </div>
