@@ -7,6 +7,7 @@ import {
   Flame,
   Layers,
   RefreshCw,
+  Share2,
   Shield,
   Sparkles,
   Trophy,
@@ -355,9 +356,26 @@ export const App: React.FC = () => {
             <div className="liquid-glass rounded-3xl p-4 relative overflow-hidden">
               <div className="flex items-start justify-between gap-2">
                 <div>
-                  <span className="text-[10px] uppercase tracking-widest text-amber-300/90 font-bold">
-                    ЖОРИЙ ХАТМИ ҚУРЪОН • ЛИМИТСИЗ ТАНЛАШ
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] uppercase tracking-widest text-amber-300/90 font-bold">
+                      ЖОРИЙ ХАТМИ ҚУРЪОН
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        triggerHaptic('light');
+                        const shareText = encodeURIComponent(
+                          `🌙 ${hatm.title}\n\nҚуръони Карим хатмида яна ${hatm.free_count} та бўш пора қолди. Сиз ҳам савобга шерик бўлинг!\n👉 https://t.me/share/url?url=https://nur-hatm-bot.vercel.app`
+                        );
+                        window.open(`https://t.me/share/url?url=https://nur-hatm-bot.vercel.app&text=${shareText}`, '_blank');
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-[10px] font-semibold text-amber-200 flex items-center gap-1 transition-all"
+                      title="Хатмни дўстларга улашиш"
+                    >
+                      <Share2 className="w-3 h-3" />
+                      <span>Улашиш</span>
+                    </button>
+                  </div>
                   <h2 className="text-base font-extrabold text-white mt-0.5">
                     {hatm.title}
                   </h2>

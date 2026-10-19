@@ -148,7 +148,7 @@ async def send_user_notification(bot: Optional[Bot], user_id: int, text: str) ->
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="🌙 Хатм Mini App очиш",
+                        text="📖 Иловани очиш",
                         web_app=WebAppInfo(url=settings.WEBAPP_URL),
                     )
                 ]

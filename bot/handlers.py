@@ -33,23 +33,22 @@ router = Router()
 
 def get_main_liquid_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     """
-    Button-only UX! Users open the Liquid Glass Mini App, view Top-10 Rating,
-    or check their active timers with zero text typing required.
+    Clean, button-only keyboard. All buttons work seamlessly in single-message mode.
     """
     buttons = [
         [
             InlineKeyboardButton(
-                text="✨ Пора танлаш",
+                text="📖 Пора олиш",
                 web_app=WebAppInfo(url=settings.WEBAPP_URL),
             )
         ],
         [
             InlineKeyboardButton(
-                text="🏆 Топ-10 Фаоллар",
+                text="🏆 Топ-10 Рейтинг",
                 callback_data="show_leaderboard",
             ),
             InlineKeyboardButton(
-                text="⏳ Менинг пораларим",
+                text="⏳ Пораларим",
                 callback_data="my_juzs",
             ),
         ],
@@ -58,7 +57,7 @@ def get_main_liquid_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text="🔔 Хатм Дуа қилиш (Админ)",
+                    text="🔔 Хатм Дуоси",
                     callback_data="admin_dua_confirm",
                 ),
                 InlineKeyboardButton(
@@ -68,6 +67,18 @@ def get_main_liquid_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
             ]
         )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def format_main_welcome_text(user: User, hatm) -> str:
+    done_c = sum(1 for j in hatm.juzs if j.status == JuzStatus.DONE.value)
+    free_c = sum(1 for j in hatm.juzs if j.status == JuzStatus.FREE.value)
+    return (
+        f"🌙 <b>{hatm.title}</b>\n\n"
+        f"Ҳар бир пора учун <b>{hatm.timer_hours} соат</b> вақт берилади.\n"
+        f"Ўқиб бўлгач, <b>[Ўқидим]</b> тугмасини босиб тасдиқланг (+10 балл).\n\n"
+        f"📊 <b>Ҳолат:</b> {done_c}/30 ўқилди • {free_c} та бўш\n"
+        f"🌟 <b>Сизда:</b> {user.rating_points} балл ({user.total_juz} пора • {user.total_hatm} хатм)"
+    )
 
 
 @router.message(CommandStart())
@@ -85,21 +96,7 @@ async def cmd_start(message: Message) -> None:
         hatm = await get_active_hatm(session)
         await session.commit()
 
-        done_c = sum(1 for j in hatm.juzs if j.status == JuzStatus.DONE.value)
-        free_c = sum(1 for j in hatm.juzs if j.status == JuzStatus.FREE.value)
-
-    welcome = (
-        f"🌙 <b>Ассалому алайкум, {user.name}!</b>\n\n"
-        f"<b>NUR HATM</b> тизимига хуш келибсиз.\n"
-        f"Бу ерда ҳеч қандай <i>«ёзиб қўйинг»</i> дейиш шарт эмас — барча поралар "
-        f"<b>илова</b> ичида биргина тугма билан танланади!\n\n"
-        f"📖 <b>Жорий хатм:</b> {hatm.title}\n"
-        f"✅ Ўқилди: <b>{done_c}/30</b> | ⚪ Бўш поралар: <b>{free_c} та</b>\n"
-        f"♾ <b>Лимит йўқ:</b> Бир вақтнинг ўзида 1, 5, 10 ёки барча 30 порани танлашингиз мумкин.\n"
-        f"⏱ <b>Таймер:</b> Ҳар бир олинган пора учун <b>{hatm.timer_hours} соат</b> вақт берилади (+10 балл).\n\n"
-        f"🌟 <b>Сизнинг рейтингингиз:</b> {user.rating_points} балл ({user.total_juz} пора | {user.total_hatm} хатм)"
-    )
-
+    welcome = format_main_welcome_text(user, hatm)
     await message.answer(
         welcome,
         parse_mode=ParseMode.HTML,
@@ -111,7 +108,7 @@ async def cmd_start(message: Message) -> None:
 async def cmd_admins(message: Message) -> None:
     """
     Super Admin command to manage admins:
-    - `/admins` -> lists all current admins & buttons
+    - `/admins` -> lists all current admins
     - `/admins add 123456789 Исм` -> promotes user to Admin
     - `/admins remove 123456789` -> revokes Admin
     """
@@ -129,7 +126,7 @@ async def cmd_admins(message: Message) -> None:
 
         if not (caller.is_super_admin or caller.is_admin):
             await message.answer(
-                "🔒 Ушбу буйруқ фақат <b>Super Admin</b> учун мўлжалланган.",
+                "🔒 Ушбу буйруқ фақат <b>Super Admin</b> учун.",
                 parse_mode=ParseMode.HTML,
             )
             return
@@ -142,14 +139,14 @@ async def cmd_admins(message: Message) -> None:
             try:
                 target_id = int(parts[2])
             except ValueError:
-                await message.answer("❌ ID фақат рақамлардан иборат бўлиши керак.")
+                await message.answer("❌ ID фақат рақам бўлиши керак.")
                 return
             target_name = parts[3] if len(parts) >= 4 else f"Admin #{target_id}"
             target_user = await get_or_create_user(session, target_id, target_name)
             target_user.is_admin = True
             await session.commit()
             await message.answer(
-                f"✅ Фойдаланувчи <b>{target_user.name}</b> (<code>{target_id}</code>) админ этиб тайинланди!",
+                f"✅ <b>{target_user.name}</b> (<code>{target_id}</code>) админ этиб тайинланди!",
                 parse_mode=ParseMode.HTML,
             )
             return
@@ -164,7 +161,7 @@ async def cmd_admins(message: Message) -> None:
                 await message.answer("❌ ID рақам бўлиши керак.")
                 return
             if target_id in settings.admin_id_list:
-                await message.answer("⚠️ .env даги Super Admin'ни ўчириб бўлмайди.")
+                await message.answer("⚠️ Super Admin'ни ўчириб бўлмайди.")
                 return
             target_user = await get_or_create_user(session, target_id)
             target_user.is_admin = False
@@ -183,13 +180,10 @@ async def cmd_admins(message: Message) -> None:
             for a in admins
         ]
         text = (
-            "👑 <b>Админлар бошқаруви</b>\n\n"
+            "👑 <b>Админлар рўйхати</b>\n\n"
             + ("\n".join(admin_lines) if admin_lines else "Ҳозирча админлар йўқ.")
-            + "\n\n💡 <b>Янги админ қўшиш:</b>\n"
-            "<code>/admins add 123456789 Исми</code>\n"
-            "<b>Админни ўчириш:</b>\n"
-            "<code>/admins remove 123456789</code>\n\n"
-            "Ёки илова ичидаги <b>Админ Панел</b> орқали тугмалар билан бошқаринг:"
+            + "\n\n💡 <b>Қўшиш:</b> <code>/admins add 123456789 Исми</code>\n"
+            "<b>Ўчириш:</b> <code>/admins remove 123456789</code>"
         )
         await message.answer(
             text,
@@ -208,29 +202,42 @@ async def cb_show_leaderboard(callback: CallbackQuery) -> None:
     for u in lb.top_users:
         m = medals.get(u.rank, f"<b>{u.rank}.</b>")
         lines.append(
-            f"{m} <b>{u.name}</b> — {u.total_juz} пора • {u.total_hatm} хатм • <b>{u.rating_points} балл</b>"
+            f"{m} <b>{u.name}</b> — {u.total_juz} пора • <b>{u.rating_points} балл</b>"
         )
 
     if not lb.top_users:
-        lines.append("Ҳозирча ўқилган поралар йўқ. Биринчи бўлиб савоб қозонинг!")
+        lines.append("Ҳозирча ўқилган поралар йўқ. Биринчи бўлиб савоб олинг!")
 
-    lines.append(
-        f"\n✨ Жами ўқилган поралар: <b>{lb.total_completed_juzs} та</b>"
+    lines.append(f"\n✨ Жами ўқилган: <b>{lb.total_completed_juzs} та пора</b>")
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📖 Пора олиш",
+                    web_app=WebAppInfo(url=settings.WEBAPP_URL),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="◀️ Ортга",
+                    callback_data="back_to_main",
+                )
+            ],
+        ]
     )
-    await callback.message.answer(
-        "\n".join(lines),
-        parse_mode=ParseMode.HTML,
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="✨ Пора танлаш",
-                        web_app=WebAppInfo(url=settings.WEBAPP_URL),
-                    )
-                ]
-            ]
-        ),
-    )
+    try:
+        await callback.message.edit_text(
+            "\n".join(lines),
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb,
+        )
+    except Exception:
+        await callback.message.answer(
+            "\n".join(lines),
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb,
+        )
     await callback.answer()
 
 
@@ -254,19 +261,68 @@ async def cb_my_juzs(callback: CallbackQuery) -> None:
     done_str = ", ".join(f"{j.number}-пора" for j in my_done) if my_done else "Йўқ"
 
     text = (
-        f"👤 <b>{user.name} — Шахсий Кабинет</b>\n\n"
+        f"👤 <b>{user.name} — Шахсий кабинет</b>\n\n"
         f"🌟 Рейтинг: <b>{user.rating_points} балл</b>\n"
-        f"📖 Жами ўқилган поралар: <b>{user.total_juz} та</b>\n"
-        f"🌙 Иштирок этган хатмлар: <b>{user.total_hatm} та</b>\n\n"
-        f"⏳ <b>Жорий хатмда банд қилинган:</b> {booked_str}\n"
-        f"✅ <b>Жорий хатмда ўқилган:</b> {done_str}\n\n"
-        f"👇 <i>[Ўқидим] тугмасини босиш ёки янги пора олиш учун иловани очинг:</i>"
+        f"📖 Жами ўқилган: <b>{user.total_juz} пора</b> ({user.total_hatm} хатм)\n\n"
+        f"⏳ <b>Ҳозир сизда:</b> {booked_str}\n"
+        f"✅ <b>Ўқилди:</b> {done_str}\n\n"
+        f"Порани тасдиқлаш ёки янги пора олиш учун иловани очинг 👇"
     )
-    await callback.message.answer(
-        text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=get_main_liquid_keyboard(is_admin=user.is_admin),
+
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📖 Иловани очиш",
+                    web_app=WebAppInfo(url=settings.WEBAPP_URL),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="◀️ Ортга",
+                    callback_data="back_to_main",
+                )
+            ],
+        ]
     )
+    try:
+        await callback.message.edit_text(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb,
+        )
+    except Exception:
+        await callback.message.answer(
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb,
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_main")
+async def cb_back_to_main(callback: CallbackQuery) -> None:
+    if not callback.from_user:
+        return
+
+    async with AsyncSessionLocal() as session:
+        user = await get_or_create_user(
+            session,
+            callback.from_user.id,
+            callback.from_user.full_name or "Муслим",
+            callback.from_user.username,
+        )
+        hatm = await get_active_hatm(session)
+
+    welcome = format_main_welcome_text(user, hatm)
+    try:
+        await callback.message.edit_text(
+            welcome,
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_main_liquid_keyboard(is_admin=user.is_admin),
+        )
+    except Exception:
+        pass
     await callback.answer()
 
 
@@ -287,24 +343,22 @@ async def cb_admin_dua_confirm(callback: CallbackQuery) -> None:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="🤲 Ҳа, Хатм Дуа қилиш ва янги хатм очиш",
+                    text="🤲 Ҳа, Дуо қилиш ва янги хатм очиш",
                     callback_data="admin_dua_execute",
                 )
             ],
             [
                 InlineKeyboardButton(
                     text="❌ Бекор қилиш",
-                    callback_data="admin_dua_cancel",
+                    callback_data="back_to_main",
                 )
             ],
         ]
     )
-    await callback.message.answer(
-        f"🔔 <b>Хатм Дуа тасдиқлаш</b>\n\n"
-        f"Жорий хатм: <b>{hatm.title}</b>\n"
-        f"Ҳозирда ўқилган поралар: <b>{done_c}/30</b>\n\n"
-        f"Админ сифатида сиз исталган вақтда (ҳатто 15/30 бўлса ҳам) Хатм Дуосини эълон қилиб, "
-        f"навбатдаги хатмни бошлашингиз мумкин. Тасдиқлайсизми?",
+    await callback.message.edit_text(
+        f"🔔 <b>Хатм Дуоси</b>\n\n"
+        f"Жорий хатм: <b>{hatm.title}</b> ({done_c}/30 ўқилди)\n\n"
+        f"Хатм Дуосини тасдиқлайсизми? Барча иштирокчиларга дуо юборилади ва янги хатм очилади.",
         parse_mode=ParseMode.HTML,
         reply_markup=kb,
     )
@@ -328,19 +382,18 @@ async def cb_admin_dua_execute(callback: CallbackQuery) -> None:
         )
 
     await callback.message.edit_text(
-        f"🤲 <b>Алҳамдулиллаҳ! {finished_hatm.title} учун Хатм Дуа қилинди!</b>\n\n"
-        f"<i>{finished_hatm.dua_message}</i>\n\n"
-        f"✨ Янги <b>{new_hatm.title if new_hatm else ''}</b> автоматик очилди!",
+        f"🤲 <b>{finished_hatm.title} учун Хатм Дуоси қилинди!</b>\n\n"
+        f"<i>«{finished_hatm.dua_message}»</i>\n\n"
+        f"✨ Янги <b>{new_hatm.title if new_hatm else ''}</b> очилди!",
         parse_mode=ParseMode.HTML,
         reply_markup=get_main_liquid_keyboard(is_admin=True),
     )
-    await callback.answer("🤲 Хатм Дуа қабул бўлсин!")
+    await callback.answer("🤲 Хатм Дуоси қабул бўлсин!")
 
 
 @router.callback_query(F.data == "admin_dua_cancel")
 async def cb_admin_dua_cancel(callback: CallbackQuery) -> None:
-    await callback.message.delete()
-    await callback.answer("Бекор қилинди")
+    await cb_back_to_main(callback)
 
 
 @router.my_chat_member()
@@ -362,29 +415,44 @@ async def on_my_chat_member(event: ChatMemberUpdated) -> None:
 @router.message()
 async def reject_free_text_and_show_buttons(message: Message) -> None:
     """
-    Enforces Rule #1:
-    'Только кнопками в Mini App. Никакого текста "ёзиб куйинг".'
-    Any text message sent to the bot is gently redirected to the Mini App button.
+    Clean Chat Enforcer:
+    If user writes any random text, the bot gently informs them and
+    auto-deletes both the user's message and the bot's tip in a few seconds,
+    keeping the chat 100% pristine!
     """
     if not message.from_user:
         return
 
-    async with AsyncSessionLocal() as session:
-        user = await get_or_create_user(
-            session,
-            message.from_user.id,
-            message.from_user.full_name or "Муслим",
-            message.from_user.username,
-        )
-        await session.commit()
+    # Delete user's random message after 2 seconds
+    async def _cleanup(user_msg: Message, tip_msg: Message):
+        await asyncio.sleep(4.0)
+        try:
+            await user_msg.delete()
+        except Exception:
+            pass
+        try:
+            await tip_msg.delete()
+        except Exception:
+            pass
 
-    await message.answer(
-        "💎 <b>Илтимос, матн ёзманг («ёзиб қўйинг» шарт эмас)!</b>\n\n"
-        "Пора танлаш, бир нечта порани белгилаш ва <b>[✅ Ўқидим]</b> тугмасини босиш "
-        "фақат пастдаги <b>Пора танлаш</b> тугмаси орқали амалга оширилади 👇",
-        parse_mode=ParseMode.HTML,
-        reply_markup=get_main_liquid_keyboard(is_admin=user.is_admin),
-    )
+    try:
+        tip = await message.answer(
+            "✨ <b>Пора танлаш фақат тугма орқали</b> (ёзиш шарт эмас) 👇",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        InlineKeyboardButton(
+                            text="📖 Пора олиш",
+                            web_app=WebAppInfo(url=settings.WEBAPP_URL),
+                        )
+                    ]
+                ]
+            ),
+        )
+        asyncio.create_task(_cleanup(message, tip))
+    except Exception:
+        pass
 
 
 def setup_bot() -> Optional[ tuple[Bot, Dispatcher] ]:
