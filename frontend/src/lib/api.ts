@@ -243,3 +243,53 @@ export async function resetHatmAdmin(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+export async function adminSetJuz(payload: {
+  admin_id: number;
+  hatm_id?: number;
+  juz_number: number;
+  juz_status: 'free' | 'booked' | 'done';
+  reader_name?: string;
+}) {
+  return request<{
+    success: boolean;
+    message: string;
+    active_hatm: HatmData;
+  }>('/admin/set-juz', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminDeleteHatm(payload: {
+  admin_id: number;
+  hatm_id: number;
+}) {
+  return request<{
+    success: boolean;
+    message: string;
+    active_hatm: HatmData;
+  }>('/admin/delete-hatm', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminUpdateHatm(payload: {
+  admin_id: number;
+  hatm_id?: number;
+  title?: string;
+  dedication?: string;
+  timer_hours?: number;
+  hatm_status?: 'active' | 'completed';
+}) {
+  return request<{
+    success: boolean;
+    message: string;
+    active_hatm: HatmData;
+  }>('/admin/update-hatm', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+

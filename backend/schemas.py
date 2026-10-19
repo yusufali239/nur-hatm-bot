@@ -112,3 +112,6 @@ class AdminActionRequest(BaseModel):
     target_user_id: Optional[int] = None
     target_user_name: Optional[str] = None
     juz_number: Optional[int] = None
+    juz_status: Optional[str] = None  # "free" | "booked" | "done"
+    reader_name: Optional[str] = None
+    hatm_status: Optional[str] = None  # "active" | "completed"

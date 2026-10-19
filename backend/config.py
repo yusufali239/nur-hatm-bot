@@ -1,5 +1,5 @@
 import os
-from typing import List
+from typing import List, Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,12 +11,15 @@ class Settings(BaseSettings):
     )
 
     BOT_TOKEN: str = ""
+    # Optional: bot username without "@". Auto-detected from Telegram on startup if empty.
+    BOT_USERNAME: str = ""
     ADMIN_IDS: str = "123456789"
     CHANNEL_ID: str = ""
     WEBAPP_URL: str = "https://nur-hatm-bot.vercel.app"
     DATABASE_URL: str = "sqlite+aiosqlite:///./hatm_local.db"
 
-    DEFAULT_TIMER_HOURS: int = 24
+    # Default booking period for NEW hatms (admin changes it per hatm in the admin panel)
+    DEFAULT_TIMER_HOURS: int = 72
     POINTS_ON_COMPLETE: int = 10
     POINTS_ON_EXPIRE_PENALTY: int = 5
     CHANNEL_DEBOUNCE_SECONDS: float = 3.0
@@ -32,6 +35,16 @@ class Settings(BaseSettings):
             if raw.isdigit():
                 ids.append(int(raw))
         return ids
+
+    def bot_link(self, hatm_id: Optional[int] = None) -> str:
+        """Deep link to the bot itself (t.me/<bot>?start=hatm_<id>). Falls back to WEBAPP_URL."""
+        uname = self.BOT_USERNAME.strip().lstrip("@")
+        if not uname:
+            return self.WEBAPP_URL
+        link = f"https://t.me/{uname}"
+        if hatm_id:
+            link += f"?start=hatm_{hatm_id}"
+        return link
 
     @property
     def async_database_url(self) -> str:

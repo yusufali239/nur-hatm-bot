@@ -25,9 +25,13 @@ from backend.schemas import (
     UserProfileSchema,
 )
 from backend.services import (
+    admin_delete_hatm,
+    admin_set_juz,
+    admin_update_hatm,
     book_multiple_juzs,
     complete_user_juzs,
     expiration_worker_loop,
+    format_duration,
     get_active_hatm,
     get_leaderboard,
     get_or_create_user,
@@ -39,6 +43,7 @@ from backend.services import (
     trigger_debounced_channel_sync,
     uncomplete_user_juzs,
 )
+from backend.auth import validate_init_data
 from bot.handlers import setup_bot
 import httpx
 
@@ -81,6 +86,13 @@ async def lifespan(app: FastAPI):
     polling_task: Optional[asyncio.Task] = None
     if bot_pair:
         bot, dp = bot_pair
+        if not settings.BOT_USERNAME.strip():
+            try:
+                me = await bot.get_me()
+                settings.BOT_USERNAME = me.username or ""
+                logger.info(f"Detected bot username: @{settings.BOT_USERNAME}")
+            except Exception as exc:
+                logger.warning(f"Could not detect bot username: {exc}")
         logger.info("Starting Aiogram 3 Bot polling in background...")
         polling_task = asyncio.create_task(
             dp.start_polling(bot, handle_signals=False)
@@ -163,6 +175,7 @@ async def get_full_state(
     recent_hatms = (await db.execute(recent_stmt)).scalars().all()
 
     return {
+        "bot_username": settings.BOT_USERNAME.strip().lstrip("@") or None,
         "hatm": serialize_hatm(hatm),
         "user": UserProfileSchema.model_validate(user),
         "leaderboard": leaderboard,
@@ -200,7 +213,7 @@ async def api_book_juzs(req: BookJuzRequest, db: AsyncSession = Depends(get_db))
     )
 
     if not booked and conflict:
-        msg = f"Танланган поралар ({', '.join(map(str, conflict))}) аллақачон банд қилинган."
+        msg = f"{', '.join(map(str, conflict))}-пора банд"
         return BookJuzResponse(
             success=False,
             booked=[],
@@ -210,10 +223,9 @@ async def api_book_juzs(req: BookJuzRequest, db: AsyncSession = Depends(get_db))
             user=UserProfileSchema.model_validate(user),
         )
 
-    nums_str = ", ".join(f"{n}-пора" for n in booked)
-    msg = f"Аллоҳ муборак қилсин! {nums_str} сизга банд қилинди ({hatm.timer_hours} соат таймер ишга тушди)."
+    msg = f"✓ {', '.join(map(str, booked))}-пора • {format_duration(hatm.timer_hours)}"
     if conflict:
-        msg += f" (Банд эди: {', '.join(map(str, conflict))})"
+        msg += f" (банд: {', '.join(map(str, conflict))})"
 
     return BookJuzResponse(
         success=True,
@@ -513,3 +525,67 @@ async def api_admin_reset_hatm(req: AdminActionRequest, db: AsyncSession = Depen
         "message": f"🧹 {hatm.title} барча 30 та пораси бўшатилди ва тозаланди!",
         "active_hatm": serialize_hatm(hatm),
     }
+
+
+@app.post("/api/admin/set-juz")
+async def api_admin_set_juz(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
+    """Admin manual control: change any juz status, edit reader name, or clear."""
+    await verify_admin_or_demo(db, req.admin_id)
+    if not req.juz_number or not (1 <= req.juz_number <= 30):
+        raise HTTPException(status_code=400, detail="Пора рақами 1..30 бўлиши керак.")
+    status = (req.juz_status or "free").lower()
+    try:
+        hatm = await admin_set_juz(
+            session=db,
+            hatm_id=req.hatm_id,
+            juz_number=req.juz_number,
+            status=status,
+            user_name=req.reader_name,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {
+        "success": True,
+        "message": f"✓ {req.juz_number}-пора янгиланди",
+        "active_hatm": serialize_hatm(hatm),
+    }
+
+
+@app.post("/api/admin/delete-hatm")
+async def api_admin_delete_hatm(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
+    """Admin deletes an entire Hatm cycle and its channel post."""
+    await verify_admin_or_demo(db, req.admin_id)
+    if not req.hatm_id:
+        raise HTTPException(status_code=400, detail="hatm_id кўрсатилиши шарт.")
+    try:
+        title = await admin_delete_hatm(db, req.hatm_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    new_active = await get_active_hatm(db)
+    return {
+        "success": True,
+        "message": f"🗑 «{title}» ўчирилди",
+        "active_hatm": serialize_hatm(new_active),
+    }
+
+
+@app.post("/api/admin/update-hatm")
+async def api_admin_update_hatm(req: AdminActionRequest, db: AsyncSession = Depends(get_db)):
+    """Admin updates hatm title, dedication, timer hours, or status."""
+    await verify_admin_or_demo(db, req.admin_id)
+    hatm = await admin_update_hatm(
+        session=db,
+        hatm_id=req.hatm_id,
+        title=req.title,
+        dedication=req.dedication,
+        timer_hours=req.timer_hours,
+        status=req.hatm_status,
+    )
+    return {
+        "success": True,
+        "message": f"⚙️ «{hatm.title}» сақланди ({format_duration(hatm.timer_hours)})",
+        "active_hatm": serialize_hatm(hatm),
+    }
+

@@ -25,7 +25,11 @@ from backend.services import (
     register_bot_callbacks,
     release_all_juzs_for_blocked_user,
 )
-from bot.channel_manager import send_user_notification, sync_channel_board
+from bot.channel_manager import (
+    delete_channel_post,
+    send_user_notification,
+    sync_channel_board,
+)
 
 logger = logging.getLogger("nur_hatm.bot.handlers")
 router = Router()
@@ -74,10 +78,8 @@ def format_main_welcome_text(user: User, hatm) -> str:
     free_c = sum(1 for j in hatm.juzs if j.status == JuzStatus.FREE.value)
     return (
         f"🌙 <b>{hatm.title}</b>\n\n"
-        f"Ҳар бир пора учун <b>{hatm.timer_hours} соат</b> вақт берилади.\n"
-        f"Ўқиб бўлгач, <b>[Ўқидим]</b> тугмасини босиб тасдиқланг (+10 балл).\n\n"
-        f"📊 <b>Ҳолат:</b> {done_c}/30 ўқилди • {free_c} та бўш\n"
-        f"🌟 <b>Сизда:</b> {user.rating_points} балл ({user.total_juz} пора • {user.total_hatm} хатм)"
+        f"📊 {done_c}/30 ўқилди • {free_c} та бўш\n"
+        f"🌟 Сизда: <b>{user.rating_points} балл</b> ({user.total_juz} пора)"
     )
 
 
@@ -472,7 +474,10 @@ def setup_bot() -> Optional[ tuple[Bot, Dispatcher] ]:
         async def _notify_cb(user_id: int, text: str):
             await send_user_notification(bot, user_id, text)
 
-        register_bot_callbacks(_sync_cb, _notify_cb)
+        async def _delete_cb(message_id: int):
+            await delete_channel_post(bot, message_id)
+
+        register_bot_callbacks(_sync_cb, _notify_cb, _delete_cb)
         return bot, dp
     except Exception as exc:
         logger.error(f"Failed to initialize Telegram Bot: {exc}")

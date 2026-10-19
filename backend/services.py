@@ -23,23 +23,26 @@ logger = logging.getLogger("nur_hatm.services")
 # Global callbacks hooked by the Telegram Bot instance (if running)
 _channel_sync_callback = None
 _user_notify_callback = None
-_debounce_task: Optional[asyncio.Task] = None
+_channel_delete_callback = None
+_debounce_tasks: Dict[Optional[int], asyncio.Task] = {}
 
 
-def register_bot_callbacks(channel_sync_fn, user_notify_fn) -> None:
-    global _channel_sync_callback, _user_notify_callback
+def register_bot_callbacks(channel_sync_fn, user_notify_fn, channel_delete_fn=None) -> None:
+    global _channel_sync_callback, _user_notify_callback, _channel_delete_callback
     _channel_sync_callback = channel_sync_fn
     _user_notify_callback = user_notify_fn
+    _channel_delete_callback = channel_delete_fn
 
 
 def trigger_debounced_channel_sync(hatm_id: Optional[int] = None) -> None:
     """
-    Debounces Telegram Channel live board edits by 3 seconds (configurable)
-    so rapid multi-bookings never hit Telegram FloodWait limits.
+    Debounces Telegram Channel live board edits by 3 seconds (configurable) PER HATM,
+    so rapid multi-bookings never hit Telegram FloodWait limits and
+    changes in different hatms never cancel each other.
     """
-    global _debounce_task
-    if _debounce_task and not _debounce_task.done():
-        _debounce_task.cancel()
+    prev = _debounce_tasks.get(hatm_id)
+    if prev and not prev.done():
+        prev.cancel()
 
     async def _delayed_sync():
         try:
@@ -53,9 +56,17 @@ def trigger_debounced_channel_sync(hatm_id: Optional[int] = None) -> None:
 
     try:
         loop = asyncio.get_running_loop()
-        _debounce_task = loop.create_task(_delayed_sync())
+        _debounce_tasks[hatm_id] = loop.create_task(_delayed_sync())
     except RuntimeError:
         pass
+
+
+async def delete_channel_post_safe(message_id: Optional[int]) -> None:
+    if message_id and _channel_delete_callback:
+        try:
+            await _channel_delete_callback(message_id)
+        except Exception as exc:
+            logger.warning(f"Channel delete error: {exc}")
 
 
 async def notify_user_safe(user_id: int, text: str) -> None:
@@ -64,6 +75,16 @@ async def notify_user_safe(user_id: int, text: str) -> None:
             await _user_notify_callback(user_id, text)
         except Exception as exc:
             logger.warning(f"User notify error for {user_id}: {exc}")
+
+
+def format_duration(hours: int) -> str:
+    """72 -> '3 кун', 36 -> '1 кун 12 соат', 12 -> '12 соат'."""
+    days, rem = divmod(int(hours), 24)
+    if days and rem:
+        return f"{days} кун {rem} соат"
+    if days:
+        return f"{days} кун"
+    return f"{rem} соат"
 
 
 def get_badge_for_points(points: int, rank: int) -> str:
@@ -370,8 +391,7 @@ async def complete_user_juzs(
             for admin_id in settings.admin_id_list:
                 await notify_user_safe(
                     admin_id,
-                    f"🎉 <b>{hatm.title} — Барча 30 та пора тўлиқ ўқилди!</b>\n\n"
-                    f"Аллоҳ қабул қилсин! Илтимос, Mini App орқали <b>[🔔 Хатм Дуа қилиш]</b> тугмасини босиб, хатмни дуо қилинг ва навбатдаги хатмни очинг.",
+                    f"🎉 <b>{hatm.title}</b> — 30/30 ўқилди. Дуо қилиш мумкин.",
                 )
 
     return completed, points_earned, hatm, user
@@ -438,6 +458,7 @@ async def release_all_juzs_for_blocked_user(session: AsyncSession, user_id: int)
     freed_numbers = [r.number for r in rows]
 
     if rows:
+        affected_hatms = {r.hatm_id for r in rows}
         for r in rows:
             r.status = JuzStatus.FREE.value
             r.user_id = None
@@ -447,7 +468,8 @@ async def release_all_juzs_for_blocked_user(session: AsyncSession, user_id: int)
             r.warning_sent = False
 
         await session.commit()
-        trigger_debounced_channel_sync()
+        for hid in affected_hatms:
+            trigger_debounced_channel_sync(hid)
         logger.info(f"Released Juzs {freed_numbers} because user {user_id} blocked the bot.")
     else:
         await session.commit()
@@ -555,22 +577,17 @@ async def perform_admin_dua(
 
     await session.commit()
     await session.refresh(hatm, attribute_names=["juzs"])
+    trigger_debounced_channel_sync(hatm.id)
     if new_hatm:
         await session.refresh(new_hatm, attribute_names=["juzs"])
         trigger_debounced_channel_sync(new_hatm.id)
-    else:
-        trigger_debounced_channel_sync(hatm.id)
 
     # Notify all participants of this Hatm about the Dua
     distinct_user_ids = {j.user_id for j in hatm.juzs if j.user_id}
     for uid in distinct_user_ids:
         await notify_user_safe(
             uid,
-            f"🤲 <b>Хатм Дуоси қилинди!</b>\n\n"
-            f"<b>{hatm.title}</b> якунланди ва дуоси қилинди.\n"
-            f"<i>«{hatm.dua_message}»</i>\n\n"
-            f"Аллоҳ таоло ўқиган пораларингизни даргоҳида ҳусни қабул айласин! ✨\n"
-            f"Янги очилган хатмда ҳам фаол иштирок этиб, савобларингизни зиёда қилинг!",
+            f"🤲 <b>{hatm.title}</b> дуоси қилинди. Аллоҳ қабул қилсин!",
         )
 
     return hatm, new_hatm
@@ -654,47 +671,181 @@ async def reset_current_hatm_data(session: AsyncSession, hatm_id: Optional[int] 
     return hatm
 
 
+
+def _aware(dt: Optional[datetime]) -> Optional[datetime]:
+    """SQLite returns naive datetimes, Postgres returns aware ones — normalize to UTC-aware."""
+    if dt is None:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _clear_juz(juz: Juz) -> None:
+    juz.status = JuzStatus.FREE.value
+    juz.user_id = None
+    juz.user_name = None
+    juz.booked_at = None
+    juz.expires_at = None
+    juz.completed_at = None
+    juz.warning_sent = False
+
+
+# ==========================================
+# 👑 ADMIN FULL-CONTROL OPERATIONS
+# ==========================================
+
+async def admin_update_hatm(
+    session: AsyncSession,
+    hatm_id: Optional[int],
+    title: Optional[str] = None,
+    dedication: Optional[str] = None,
+    timer_hours: Optional[int] = None,
+    status: Optional[str] = None,
+) -> Hatm:
+    """
+    Edit hatm title / dedication / booking period / status.
+    A changed booking period is re-applied to all currently booked juzs
+    (expires = booked_at + new period, but never sooner than 1 hour from now,
+    so shortening the period never instantly penalizes readers).
+    """
+    hatm = await get_active_hatm(session, hatm_id)
+    now = utcnow()
+
+    if timer_hours and 1 <= timer_hours <= 24 * 30 and timer_hours != hatm.timer_hours:
+        hatm.timer_hours = timer_hours
+        for j in hatm.juzs:
+            if j.status == JuzStatus.BOOKED.value:
+                base = _aware(j.booked_at) or now
+                j.expires_at = max(base + timedelta(hours=timer_hours), now + timedelta(hours=1))
+                j.warning_sent = False
+
+    if title is not None and title.strip():
+        hatm.title = title.strip()
+    if dedication is not None:
+        hatm.dedication = dedication.strip() or None
+
+    if status in (HatmStatus.ACTIVE.value, HatmStatus.COMPLETED.value) and status != hatm.status:
+        hatm.status = status
+        hatm.completed_at = now if status == HatmStatus.COMPLETED.value else None
+
+    await session.commit()
+    await session.refresh(hatm, attribute_names=["juzs"])
+    trigger_debounced_channel_sync(hatm.id)
+    return hatm
+
+
+async def admin_set_juz(
+    session: AsyncSession,
+    hatm_id: Optional[int],
+    juz_number: int,
+    status: str,
+    user_name: Optional[str] = None,
+) -> Hatm:
+    """
+    Admin sets ANY juz to free / booked / done and/or renames its reader.
+    - Can assign a juz to an offline reader by name only (no Telegram account).
+    - Rating stays consistent: moving a reader's juz into / out of DONE adds / removes points.
+    """
+    if not (1 <= juz_number <= 30):
+        raise ValueError("Пора рақами 1..30 бўлиши керак.")
+    if status not in (JuzStatus.FREE.value, JuzStatus.BOOKED.value, JuzStatus.DONE.value):
+        raise ValueError("Нотўғри ҳолат.")
+
+    hatm = await get_active_hatm(session, hatm_id)
+    juz = next((j for j in hatm.juzs if j.number == juz_number), None)
+    if not juz:
+        raise ValueError("Пора топилмади.")
+
+    now = utcnow()
+    old_status, old_uid = juz.status, juz.user_id
+    name = (user_name or "").strip() or None
+
+    if status == JuzStatus.FREE.value:
+        _clear_juz(juz)
+    else:
+        if name:
+            juz.user_name = name
+        if not juz.user_name:
+            raise ValueError("Ўқувчи исмини киритинг.")
+        if status == JuzStatus.BOOKED.value:
+            if old_status != JuzStatus.BOOKED.value:
+                juz.booked_at = now
+                juz.expires_at = now + timedelta(hours=hatm.timer_hours)
+                juz.warning_sent = False
+            juz.completed_at = None
+        else:  # DONE
+            juz.completed_at = juz.completed_at or now
+            juz.expires_at = None
+        juz.status = status
+
+    # Keep the reader's rating consistent with the manual change
+    if old_uid:
+        user = await session.get(User, old_uid)
+        if user:
+            was_done = old_status == JuzStatus.DONE.value
+            is_done = juz.status == JuzStatus.DONE.value and juz.user_id == old_uid
+            if was_done and not is_done:
+                user.total_juz = max(0, user.total_juz - 1)
+                user.rating_points = max(0, user.rating_points - settings.POINTS_ON_COMPLETE)
+            elif not was_done and is_done:
+                user.total_juz += 1
+                user.rating_points += settings.POINTS_ON_COMPLETE
+
+    await session.commit()
+    await session.refresh(hatm, attribute_names=["juzs"])
+    trigger_debounced_channel_sync(hatm.id)
+    return hatm
+
+
+async def admin_delete_hatm(session: AsyncSession, hatm_id: int) -> str:
+    """Deletes a hatm with all its juzs and removes its channel post. Returns the title."""
+    stmt = select(Hatm).options(selectinload(Hatm.juzs)).where(Hatm.id == hatm_id)
+    hatm = (await session.execute(stmt)).scalar_one_or_none()
+    if not hatm:
+        raise ValueError("Хатм топилмади.")
+
+    title = hatm.title
+    channel_msg_id = hatm.channel_message_id
+    await session.delete(hatm)
+    await session.commit()
+
+    await delete_channel_post_safe(channel_msg_id)
+    return title
+
+
+# ==========================================
+# ⏳ BOOKING PERIOD WORKER
+# ==========================================
+
 async def sweep_expired_juzs_once() -> int:
     """
     Background worker pass:
-    1) Finds any BOOKED Juz whose 24h timer (`expires_at <= now`) has expired.
-    2) Auto-releases the Juz back to `FREE` so another user can read it.
-    3) Applies the rating penalty (`-5` points via `settings.POINTS_ON_EXPIRE_PENALTY`)
-       to the user and increments `expired_count`.
-    4) Sends a polite notification via Telegram Bot if possible.
+    1) Sends ONE short reminder shortly before a booking expires
+       (1 hour before for periods ≤ 24h, otherwise 6 hours before).
+    2) Auto-releases expired BOOKED juzs back to FREE.
+    3) Applies the rating penalty (`settings.POINTS_ON_EXPIRE_PENALTY`) and increments `expired_count`.
+    4) Refreshes the channel post of every affected hatm.
     """
     now = utcnow()
     freed_count = 0
 
     async with AsyncSessionLocal() as session:
-        # Handle SQLite naive vs aware datetime comparison smoothly
         stmt = select(Juz).where(Juz.status == JuzStatus.BOOKED.value)
         booked_juzs = (await session.execute(stmt)).scalars().all()
 
         expired_by_user: Dict[int, List[int]] = {}
+        warn_by_user: Dict[int, List[Tuple[int, int]]] = {}
+        affected_hatms: set = set()
 
         for juz in booked_juzs:
-            if not juz.expires_at:
+            exp = _aware(juz.expires_at)
+            if not exp:
                 continue
-            exp = juz.expires_at
-            if exp.tzinfo is None:
-                exp = exp.replace(tzinfo=timezone.utc)
-
-            # Check for <1 hour warning notification
             remaining_sec = (exp - now).total_seconds()
-            if 0 < remaining_sec <= 3600 and not juz.warning_sent and juz.user_id:
-                juz.warning_sent = True
-                mins = int(remaining_sec // 60)
-                await notify_user_safe(
-                    juz.user_id,
-                    f"⏳ <b>Эслатма:</b> Сиз олган <b>{juz.number}-пора</b> таймери тугашига "
-                    f"<b>{mins} дақиқа</b> қолди.\n\n"
-                    f"Илтимос, ўқиб бўлган бўлсангиз Mini App орқали <b>[✅ Ўқидим]</b> тугмасини босинг!",
-                )
 
-            elif remaining_sec <= 0:
+            if remaining_sec <= 0:
                 uid = juz.user_id
                 jnum = juz.number
+                affected_hatms.add(juz.hatm_id)
                 juz.status = JuzStatus.FREE.value
                 juz.user_id = None
                 juz.user_name = None
@@ -702,37 +853,44 @@ async def sweep_expired_juzs_once() -> int:
                 juz.expires_at = None
                 juz.warning_sent = False
                 freed_count += 1
-
                 if uid:
                     expired_by_user.setdefault(uid, []).append(jnum)
+                continue
 
-        if expired_by_user:
-            for uid, jnums in expired_by_user.items():
-                user = await get_or_create_user(session, uid)
-                penalty = len(jnums) * settings.POINTS_ON_EXPIRE_PENALTY
-                user.rating_points = max(0, user.rating_points - penalty)
-                user.expired_count += len(jnums)
+            booked_at = _aware(juz.booked_at)
+            total_sec = (exp - booked_at).total_seconds() if booked_at else 24 * 3600
+            warn_window = 3600 if total_sec <= 24 * 3600 else 6 * 3600
+            if remaining_sec <= warn_window and not juz.warning_sent and juz.user_id:
+                juz.warning_sent = True
+                warn_by_user.setdefault(juz.user_id, []).append((juz.number, int(remaining_sec)))
+
+        for uid, jnums in expired_by_user.items():
+            user = await get_or_create_user(session, uid)
+            penalty = len(jnums) * settings.POINTS_ON_EXPIRE_PENALTY
+            user.rating_points = max(0, user.rating_points - penalty)
+            user.expired_count += len(jnums)
 
         await session.commit()
 
-        if freed_count > 0:
-            trigger_debounced_channel_sync()
-            for uid, jnums in expired_by_user.items():
-                penalty = len(jnums) * settings.POINTS_ON_EXPIRE_PENALTY
-                nums_str = ", ".join(f"{n}-пора" for n in sorted(jnums))
-                await notify_user_safe(
-                    uid,
-                    f"⚠️ <b>Таймер вақти тугади!</b>\n\n"
-                    f"Сиз банд қилган <b>{nums_str}</b> учун 24 соатлик муддат якунланди ва "
-                    f"бошқа ўқувчилар учун автоматик бўшатилди.\n"
-                    f"📉 Рейтинг: <b>-{penalty} балл</b>.",
-                )
+    # Notifications after commit (one short message per user)
+    for uid, items in warn_by_user.items():
+        nums = ", ".join(str(n) for n, _ in sorted(items))
+        left_h = max(1, round(min(s for _, s in items) / 3600))
+        await notify_user_safe(uid, f"⏳ {nums}-пора: {left_h} соат қолди")
+
+    for uid, jnums in expired_by_user.items():
+        penalty = len(jnums) * settings.POINTS_ON_EXPIRE_PENALTY
+        nums = ", ".join(str(n) for n in sorted(jnums))
+        await notify_user_safe(uid, f"⌛️ {nums}-пора муддати тугади • −{penalty} балл")
+
+    for hid in affected_hatms:
+        trigger_debounced_channel_sync(hid)
 
     return freed_count
 
 
 async def expiration_worker_loop(stop_event: asyncio.Event) -> None:
-    logger.info("Started background 24h Juz timer & auto-release worker.")
+    logger.info("Started background booking-period & auto-release worker.")
     while not stop_event.is_set():
         try:
             await sweep_expired_juzs_once()

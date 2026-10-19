@@ -66,32 +66,38 @@ def build_channel_hatm_text(hatm, top_user: Optional[User]) -> str:
         lines.append("🤲 <b>Ушбу Хатми Қуръон дуоси қилинди! Аллоҳ қабул айласин!</b>\n")
 
     if top_user and top_user.total_juz > 0:
-        lines.append(f"🏆 <b>Top: {top_user.name} — {top_user.total_juz} пора</b> ({top_user.rating_points} балл)")
+        lines.append(f"🏆 Top: {top_user.name} — {top_user.total_juz} пора ({top_user.rating_points} балл)")
 
-    lines.append(
-        "\n👇 <i>Пора танлаш ва [Ўқидим] тугмасини босиш фақат пастдаги тугма орқали (ёзиш шарт эмас):</i>"
-    )
     return "\n".join(lines)
 
 
-def build_channel_keyboard() -> InlineKeyboardMarkup:
-    webapp_url = settings.WEBAPP_URL.strip()
-    # In channel posts, Telegram supports url buttons (deep link to bot Mini App or direct WebApp link)
+def build_channel_keyboard(hatm_id: Optional[int] = None) -> InlineKeyboardMarkup:
+    # Deep link directly to the Telegram bot itself
+    bot_url = settings.bot_link(hatm_id)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✨ Пора танлаш",
-                    url=webapp_url if webapp_url.startswith("https://t.me/") else webapp_url,
+                    text="📖 Пора олиш",
+                    url=bot_url,
                 )
             ]
         ]
     )
 
 
+async def delete_channel_post(bot: Optional[Bot], message_id: int) -> None:
+    if not bot or not settings.CHANNEL_ID or not message_id:
+        return
+    try:
+        await bot.delete_message(chat_id=settings.CHANNEL_ID, message_id=message_id)
+    except Exception as exc:
+        logger.warning(f"Could not delete channel message {message_id}: {exc}")
+
+
 async def sync_channel_board(bot: Optional[Bot], hatm_id: Optional[int] = None) -> None:
     """
-    Debounced channel board updater (called at most once every 3 seconds).
+    Debounced channel board updater (called at most once every 3 seconds per hatm).
     Creates or edits the live Hatm post in `settings.CHANNEL_ID`.
     """
     if not bot or not settings.CHANNEL_ID:
@@ -108,7 +114,7 @@ async def sync_channel_board(bot: Optional[Bot], hatm_id: Optional[int] = None) 
         top_user = (await session.execute(top_stmt)).scalar_one_or_none()
 
         text = build_channel_hatm_text(hatm, top_user)
-        kb = build_channel_keyboard()
+        kb = build_channel_keyboard(hatm.id)
 
         try:
             if hatm.channel_message_id:
@@ -137,7 +143,7 @@ async def sync_channel_board(bot: Optional[Bot], hatm_id: Optional[int] = None) 
 
 async def send_user_notification(bot: Optional[Bot], user_id: int, text: str) -> None:
     """
-    Sends a Telegram DM to a user. If the user has blocked/banned the bot
+    Sends a short Telegram DM to a user. If the user has blocked/banned the bot
     (`TelegramForbiddenError`), automatically releases all of their active booked Juzs!
     """
     if not bot:
@@ -148,7 +154,7 @@ async def send_user_notification(bot: Optional[Bot], user_id: int, text: str) ->
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="📖 Иловани очиш",
+                        text="📖 Очиш",
                         web_app=WebAppInfo(url=settings.WEBAPP_URL),
                     )
                 ]
@@ -166,3 +172,4 @@ async def send_user_notification(bot: Optional[Bot], user_id: int, text: str) ->
             await release_all_juzs_for_blocked_user(session, user_id)
     except Exception as exc:
         logger.debug(f"Could not send notification to {user_id}: {exc}")
+

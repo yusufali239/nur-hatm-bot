@@ -403,10 +403,12 @@ export const App: React.FC = () => {
                       type="button"
                       onClick={() => {
                         triggerHaptic('light');
+                        const botUsername = state?.bot_username || 'nur_hatm_bot';
+                        const botLink = `https://t.me/${botUsername}?start=hatm_${hatm.id}`;
                         const shareText = encodeURIComponent(
-                          `🌙 ${hatm.title}\n\nҚуръони Карим хатмида яна ${hatm.free_count} та бўш пора қолди. Савобга шерик бўлинг!\n👉 https://nur-hatm-bot.vercel.app`
+                          `🌙 ${hatm.title}\n\nҚуръони Карим хатмида яна ${hatm.free_count} та бўш пора қолди. Савобга шерик бўлинг!\n👉 ${botLink}`
                         );
-                        window.open(`https://t.me/share/url?url=https://nur-hatm-bot.vercel.app&text=${shareText}`, '_blank');
+                        window.open(`https://t.me/share/url?url=${encodeURIComponent(botLink)}&text=${shareText}`, '_blank');
                       }}
                       className="px-2 py-0.5 rounded-lg bg-white/10 hover:bg-white/15 border border-white/15 text-[10px] font-semibold text-amber-200 flex items-center gap-1 transition-all"
                       title="Улашиш"
@@ -563,34 +565,27 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* TAB 2: MY JUZS & ACTIVE TIMERS */}
+        {/* TAB 2: MY JUZS */}
         {activeTab === 'my' && hatm && (
           <div className="space-y-4 pb-28">
             <div className="liquid-glass rounded-3xl p-4 space-y-3">
               <h2 className="text-base font-bold text-white flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-emerald-300" />
-                <span>Менинг пораларим ва 24с таймерлар</span>
+                <span>Менинг пораларим</span>
               </h2>
-              <p className="text-xs text-white/60">
-                Олинган ҳар бир пора учун {hatm.timer_hours} соат вақт берилади. Ўқиб бўлгач{' '}
-                <strong className="text-emerald-300">[✅ Ўқидим]</strong> тугмасини босинг (+10 балл).
-              </p>
 
               {myBookedJuzs.length === 0 ? (
                 <div className="rounded-2xl bg-white/5 border border-white/10 p-6 text-center space-y-2">
                   <div className="text-2xl">🌙</div>
                   <div className="text-sm font-bold text-white">
-                    Ҳозирда банд қилинган пораларингиз йўқ
+                    Банд қилинган пораларингиз йўқ
                   </div>
-                  <p className="text-xs text-white/55">
-                    Хатм саҳифасидан исталганча (1, 5, 10 ёки 30 та) порани танлаб олишингиз мумкин.
-                  </p>
                   <button
                     type="button"
                     onClick={() => setActiveTab('hatm')}
                     className="mt-2 px-4 py-2 rounded-xl bg-sky-400 text-slate-950 font-bold text-xs"
                   >
-                    Пора танлашга ўтиш
+                    Пора олиш
                   </button>
                 </div>
               ) : (

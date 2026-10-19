@@ -46,7 +46,7 @@ export const RatingBoard: React.FC<RatingBoardProps> = ({
               Жаннат боғининг энг фаоллари
             </h2>
             <p className="text-xs text-white/60">
-              Ҳар бир ўқилган пора учун <span className="text-emerald-300 font-semibold">+10 балл</span>, вақтида ўқилмаса <span className="text-rose-300 font-semibold">-5 балл</span>
+              Ўқилган пора учун: <span className="text-emerald-300 font-semibold">+10 балл</span>
             </p>
           </div>
         </div>

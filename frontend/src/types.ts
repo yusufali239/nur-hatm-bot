@@ -75,6 +75,7 @@ export interface RecentHatmSummary {
 }
 
 export interface FullStateResponse {
+  bot_username?: string | null;
   hatm: HatmData;
   user: UserProfile;
   leaderboard: LeaderboardData;
