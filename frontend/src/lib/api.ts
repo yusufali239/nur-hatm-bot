@@ -1,19 +1,51 @@
 import { FullStateResponse, LeaderboardData, UserProfile, HatmData } from '../types';
 
-const API_BASE = (import.meta as any).env?.VITE_API_URL || '/api';
-
-async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    ...options,
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(data.detail || data.message || 'Тармоқ хатолиги юз берди');
+const getApiBase = (): string => {
+  const envUrl = (import.meta as any).env?.VITE_API_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
+    return envUrl.trim().replace(/\/+$/, '');
   }
-  return data as T;
+
+  // When loaded on Vercel or public domain without explicit env var,
+  // automatically point to the deployed Render backend
+  if (
+    typeof window !== 'undefined' &&
+    (window.location.hostname.includes('vercel.app') || !window.location.hostname.includes('localhost'))
+  ) {
+    return 'https://nur-hatm-bot.onrender.com/api';
+  }
+
+  return '/api';
+};
+
+const API_BASE = getApiBase();
+
+async function request<T>(path: string, options?: RequestInit, retries = 1): Promise<T> {
+  const url = `${API_BASE}${path}`;
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      ...options,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.detail || data.message || 'Сервер хатолик қайтарди');
+    }
+    return data as T;
+  } catch (err: any) {
+    if (retries > 0) {
+      // Retry once after brief delay (helps when Render is waking up)
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      return request<T>(path, options, retries - 1);
+    }
+    const msg = String(err?.message || '');
+    if (msg.toLowerCase().includes('failed to fetch') || msg.toLowerCase().includes('networkerror')) {
+      throw new Error('Сервер ишга тушмоқда ёки тармоқ уланиши йўқ. Илтимос, бир оз кутиб қайта янгиланг.');
+    }
+    throw err;
+  }
 }
 
 export async function fetchAppState(

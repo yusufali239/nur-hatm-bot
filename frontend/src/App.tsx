@@ -244,7 +244,7 @@ export const App: React.FC = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-b from-[#0A0A0F] via-[#111324] to-[#1A1A2E] text-white">
-      {/* Ambient iOS 26 Liquid Glass Orbs */}
+      {/* Ambient Glass Glow Orbs */}
       <div className="pointer-events-none fixed top-[-120px] left-[-80px] w-72 h-72 rounded-full bg-indigo-500/20 blur-[110px]" />
       <div className="pointer-events-none fixed top-[25%] right-[-90px] w-80 h-80 rounded-full bg-emerald-500/15 blur-[120px]" />
       <div className="pointer-events-none fixed bottom-[-100px] left-[20%] w-80 h-80 rounded-full bg-amber-500/15 blur-[120px]" />
@@ -530,6 +530,36 @@ export const App: React.FC = () => {
                 />
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Loading / Disconnected Graceful View */}
+        {activeTab === 'hatm' && !hatm && (
+          <div className="py-20 text-center flex flex-col items-center justify-center gap-3">
+            {loading ? (
+              <>
+                <RefreshCw className="w-8 h-8 animate-spin text-amber-300" />
+                <p className="text-xs text-white/60">Хатм маълумотлари юкланмоқда...</p>
+              </>
+            ) : (
+              <div className="liquid-glass rounded-3xl p-6 text-center max-w-sm mx-auto flex flex-col items-center gap-3">
+                <span className="text-3xl">🌙</span>
+                <h3 className="text-sm font-bold text-white">Сервер билан алоқа кутилмоқда</h3>
+                <p className="text-xs text-white/60 leading-relaxed">
+                  Сервер уйғонмоқда (10-20 сония). Илтимос, қайта юклаш тугмасини босинг.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    triggerHaptic('light');
+                    loadState();
+                  }}
+                  className="px-4 py-2 rounded-2xl bg-amber-400 text-slate-950 font-bold text-xs active:scale-95 transition-all shadow-md"
+                >
+                  Қайта юклаш
+                </button>
+              </div>
+            )}
           </div>
         )}
 

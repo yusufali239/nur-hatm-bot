@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "https://nur-hatm-bot.onrender.com/api/$1"
+    }
+  ]
+}
