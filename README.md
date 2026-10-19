@@ -1,6 +1,9 @@
-# 🌙 NUR HATM — iOS 26 Liquid Glass Edition
+# 🌙 NUR HATM — Қуръони Карим Хатми (Telegram Bot + Mini App)
 
-Премиальный бесплатный проект **Quran Hatm Telegram Bot + Mini App** уровня App Store. Разработан с эстетикой **iOS 26 Liquid Glass / visionOS Glassmorphism**, мгновенным мульти-выбором пора без лимитов, 24-часовым таймером авто-освобождения и духовным рейтингом чтецов.
+Премиальный бесплатный проект **Quran Hatm Telegram Bot + Mini App** с мгновенным мульти-выбором пора без лимитов, 24-часовым таймером авто-освобождения и духовным рейтингом чтецов.
+
+- **GitHub репозиторий**: `https://github.com/yusufali239/nur-hatm-bot.git`
+- **Mini App URL (Vercel)**: `https://nur-hatm-bot.vercel.app`
 
 ---
 

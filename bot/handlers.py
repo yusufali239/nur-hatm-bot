@@ -39,7 +39,7 @@ def get_main_liquid_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
     buttons = [
         [
             InlineKeyboardButton(
-                text="✨ Пора танлаш (Liquid Glass App)",
+                text="✨ Пора танлаш",
                 web_app=WebAppInfo(url=settings.WEBAPP_URL),
             )
         ],
@@ -90,9 +90,9 @@ async def cmd_start(message: Message) -> None:
 
     welcome = (
         f"🌙 <b>Ассалому алайкум, {user.name}!</b>\n\n"
-        f"<b>NUR HATM • Liquid Glass</b> тизимига хуш келибсиз.\n"
+        f"<b>NUR HATM</b> тизимига хуш келибсиз.\n"
         f"Бу ерда ҳеч қандай <i>«ёзиб қўйинг»</i> дейиш шарт эмас — барча поралар "
-        f"<b>Mini App</b> ичида биргина тугма билан танланади!\n\n"
+        f"<b>илова</b> ичида биргина тугма билан танланади!\n\n"
         f"📖 <b>Жорий хатм:</b> {hatm.title}\n"
         f"✅ Ўқилди: <b>{done_c}/30</b> | ⚪ Бўш поралар: <b>{free_c} та</b>\n"
         f"♾ <b>Лимит йўқ:</b> Бир вақтнинг ўзида 1, 5, 10 ёки барча 30 порани танлашингиз мумкин.\n"
@@ -183,13 +183,13 @@ async def cmd_admins(message: Message) -> None:
             for a in admins
         ]
         text = (
-            "👑 <b>Админлар бошқаруви (Liquid Glass Admin)</b>\n\n"
+            "👑 <b>Админлар бошқаруви</b>\n\n"
             + ("\n".join(admin_lines) if admin_lines else "Ҳозирча админлар йўқ.")
             + "\n\n💡 <b>Янги админ қўшиш:</b>\n"
             "<code>/admins add 123456789 Исми</code>\n"
             "<b>Админни ўчириш:</b>\n"
             "<code>/admins remove 123456789</code>\n\n"
-            "Ёки Mini App ичидаги <b>Админ Панел</b> орқали тугмалар билан бошқаринг:"
+            "Ёки илова ичидаги <b>Админ Панел</b> орқали тугмалар билан бошқаринг:"
         )
         await message.answer(
             text,
@@ -224,7 +224,7 @@ async def cb_show_leaderboard(callback: CallbackQuery) -> None:
             inline_keyboard=[
                 [
                     InlineKeyboardButton(
-                        text="✨ Пора танлаш (Mini App)",
+                        text="✨ Пора танлаш",
                         web_app=WebAppInfo(url=settings.WEBAPP_URL),
                     )
                 ]
@@ -260,7 +260,7 @@ async def cb_my_juzs(callback: CallbackQuery) -> None:
         f"🌙 Иштирок этган хатмлар: <b>{user.total_hatm} та</b>\n\n"
         f"⏳ <b>Жорий хатмда банд қилинган:</b> {booked_str}\n"
         f"✅ <b>Жорий хатмда ўқилган:</b> {done_str}\n\n"
-        f"👇 <i>[Ўқидим] тугмасини босиш ёки янги пора олиш учун Mini App'ни очинг:</i>"
+        f"👇 <i>[Ўқидим] тугмасини босиш ёки янги пора олиш учун иловани очинг:</i>"
     )
     await callback.message.answer(
         text,
@@ -364,7 +364,7 @@ async def reject_free_text_and_show_buttons(message: Message) -> None:
     """
     Enforces Rule #1:
     'Только кнопками в Mini App. Никакого текста "ёзиб куйинг".'
-    Any text message sent to the bot is gently redirected to the Liquid Glass Mini App button.
+    Any text message sent to the bot is gently redirected to the Mini App button.
     """
     if not message.from_user:
         return
@@ -381,7 +381,7 @@ async def reject_free_text_and_show_buttons(message: Message) -> None:
     await message.answer(
         "💎 <b>Илтимос, матн ёзманг («ёзиб қўйинг» шарт эмас)!</b>\n\n"
         "Пора танлаш, бир нечта порани белгилаш ва <b>[✅ Ўқидим]</b> тугмасини босиш "
-        "фақат пастдаги <b>Liquid Glass Mini App</b> тугмаси орқали амалга оширилади 👇",
+        "фақат пастдаги <b>Пора танлаш</b> тугмаси орқали амалга оширилади 👇",
         parse_mode=ParseMode.HTML,
         reply_markup=get_main_liquid_keyboard(is_admin=user.is_admin),
     )

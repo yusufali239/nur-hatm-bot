@@ -81,7 +81,7 @@ def build_channel_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="✨ Пора танлаш • Liquid Glass App",
+                    text="✨ Пора танлаш",
                     url=webapp_url if webapp_url.startswith("https://t.me/") else webapp_url,
                 )
             ]

@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     BOT_TOKEN: str = ""
     ADMIN_IDS: str = "123456789"
     CHANNEL_ID: str = ""
-    WEBAPP_URL: str = "http://localhost:5173"
+    WEBAPP_URL: str = "https://nur-hatm-bot.vercel.app"
     DATABASE_URL: str = "sqlite+aiosqlite:///./hatm_local.db"
 
     DEFAULT_TIMER_HOURS: int = 24

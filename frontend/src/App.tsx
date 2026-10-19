@@ -243,8 +243,8 @@ export const App: React.FC = () => {
                 <h1 className="text-sm font-extrabold tracking-tight text-white truncate">
                   NUR HATM
                 </h1>
-                <span className="px-1.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[9px] font-semibold uppercase tracking-wider text-sky-200">
-                  iOS 26 Glass
+                <span className="px-1.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[9px] font-semibold uppercase tracking-wider text-amber-200">
+                  Қуръон Хатми
                 </span>
               </div>
               <p className="text-[11px] text-white/60 truncate">

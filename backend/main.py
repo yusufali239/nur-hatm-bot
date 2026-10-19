@@ -72,9 +72,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="NUR HATM • iOS 26 Liquid Glass API",
+    title="NUR HATM API",
     version="2.6.0",
-    description="Premium Quran Hatm Mini App & Telegram Bot Backend",
+    description="Quran Hatm Mini App & Telegram Bot Backend",
     lifespan=lifespan,
 )
 
@@ -91,7 +91,7 @@ app.add_middleware(
 async def health_check():
     return {
         "status": "ok",
-        "project": "NUR HATM • Liquid Glass Edition",
+        "project": "NUR HATM",
         "timer_hours": settings.DEFAULT_TIMER_HOURS,
         "points_on_complete": settings.POINTS_ON_COMPLETE,
         "points_on_expire_penalty": settings.POINTS_ON_EXPIRE_PENALTY,

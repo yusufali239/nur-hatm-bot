@@ -17,7 +17,7 @@ services:
       - key: CHANNEL_ID
         sync: false
       - key: WEBAPP_URL
-        sync: false
+        value: "https://nur-hatm-bot.vercel.app"
       - key: DATABASE_URL
         sync: false
       - key: DEFAULT_TIMER_HOURS
