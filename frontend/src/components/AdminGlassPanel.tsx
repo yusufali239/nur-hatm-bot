@@ -402,9 +402,6 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
             <Edit3 className="w-4 h-4 text-amber-300" />
             <span>30 та пора назорати</span>
           </h4>
-          <span className="text-[10px] text-white/50">
-            Ўзгартириш учун пора устига босинг
-          </span>
         </div>
 
         <div className="grid grid-cols-3 gap-2 max-h-72 overflow-y-auto pr-1">

@@ -27,6 +27,7 @@ from backend.services import (
 )
 from bot.channel_manager import (
     delete_channel_post,
+    send_group_dua,
     send_user_notification,
     sync_channel_board,
 )
@@ -263,12 +264,10 @@ async def cb_my_juzs(callback: CallbackQuery) -> None:
     done_str = ", ".join(f"{j.number}-пора" for j in my_done) if my_done else "Йўқ"
 
     text = (
-        f"👤 <b>{user.name} — Шахсий кабинет</b>\n\n"
-        f"🌟 Рейтинг: <b>{user.rating_points} балл</b>\n"
-        f"📖 Жами ўқилган: <b>{user.total_juz} пора</b> ({user.total_hatm} хатм)\n\n"
-        f"⏳ <b>Ҳозир сизда:</b> {booked_str}\n"
-        f"✅ <b>Ўқилди:</b> {done_str}\n\n"
-        f"Порани тасдиқлаш ёки янги пора олиш учун иловани очинг 👇"
+        f"👤 <b>{user.name}</b>\n\n"
+        f"🌟 <b>{user.rating_points} балл</b> • {user.total_juz} пора ({user.total_hatm} хатм)\n\n"
+        f"⏳ <b>Банд:</b> {booked_str}\n"
+        f"✅ <b>Ўқилди:</b> {done_str}"
     )
 
     kb = InlineKeyboardMarkup(
@@ -358,9 +357,9 @@ async def cb_admin_dua_confirm(callback: CallbackQuery) -> None:
         ]
     )
     await callback.message.edit_text(
-        f"🔔 <b>Хатм Дуоси</b>\n\n"
-        f"Жорий хатм: <b>{hatm.title}</b> ({done_c}/30 ўқилди)\n\n"
-        f"Хатм Дуосини тасдиқлайсизми? Барча иштирокчиларга дуо юборилади ва янги хатм очилади.",
+        f"🔔 <b>{hatm.title} Дуоси</b>\n\n"
+        f"Ҳолат: {done_c}/30 ўқилди\n\n"
+        f"Дуони гуруҳга юбориш ва янги хатмни очишни тасдиқлайсизми?",
         parse_mode=ParseMode.HTML,
         reply_markup=kb,
     )
@@ -384,13 +383,13 @@ async def cb_admin_dua_execute(callback: CallbackQuery) -> None:
         )
 
     await callback.message.edit_text(
-        f"🤲 <b>{finished_hatm.title} учун Хатм Дуоси қилинди!</b>\n\n"
+        f"🤲 <b>{finished_hatm.title} Дуоси гуруҳга юборилди!</b>\n\n"
         f"<i>«{finished_hatm.dua_message}»</i>\n\n"
-        f"✨ Янги <b>{new_hatm.title if new_hatm else ''}</b> очилди!",
+        f"✨ Янги <b>{new_hatm.title if new_hatm else ''}</b> очилди.",
         parse_mode=ParseMode.HTML,
         reply_markup=get_main_liquid_keyboard(is_admin=True),
     )
-    await callback.answer("🤲 Хатм Дуоси қабул бўлсин!")
+    await callback.answer("🤲 Дуо гуруҳга юборилди!")
 
 
 @router.callback_query(F.data == "admin_dua_cancel")
@@ -477,7 +476,10 @@ def setup_bot() -> Optional[ tuple[Bot, Dispatcher] ]:
         async def _delete_cb(message_id: int):
             await delete_channel_post(bot, message_id)
 
-        register_bot_callbacks(_sync_cb, _notify_cb, _delete_cb)
+        async def _dua_cb(hatm, new_hatm=None):
+            await send_group_dua(bot, hatm, new_hatm)
+
+        register_bot_callbacks(_sync_cb, _notify_cb, _delete_cb, _dua_cb)
         return bot, dp
     except Exception as exc:
         logger.error(f"Failed to initialize Telegram Bot: {exc}")

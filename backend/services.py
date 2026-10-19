@@ -24,14 +24,16 @@ logger = logging.getLogger("nur_hatm.services")
 _channel_sync_callback = None
 _user_notify_callback = None
 _channel_delete_callback = None
+_channel_dua_callback = None
 _debounce_tasks: Dict[Optional[int], asyncio.Task] = {}
 
 
-def register_bot_callbacks(channel_sync_fn, user_notify_fn, channel_delete_fn=None) -> None:
-    global _channel_sync_callback, _user_notify_callback, _channel_delete_callback
+def register_bot_callbacks(channel_sync_fn, user_notify_fn, channel_delete_fn=None, channel_dua_fn=None) -> None:
+    global _channel_sync_callback, _user_notify_callback, _channel_delete_callback, _channel_dua_callback
     _channel_sync_callback = channel_sync_fn
     _user_notify_callback = user_notify_fn
     _channel_delete_callback = channel_delete_fn
+    _channel_dua_callback = channel_dua_fn
 
 
 def trigger_debounced_channel_sync(hatm_id: Optional[int] = None) -> None:
@@ -582,13 +584,12 @@ async def perform_admin_dua(
         await session.refresh(new_hatm, attribute_names=["juzs"])
         trigger_debounced_channel_sync(new_hatm.id)
 
-    # Notify all participants of this Hatm about the Dua
-    distinct_user_ids = {j.user_id for j in hatm.juzs if j.user_id}
-    for uid in distinct_user_ids:
-        await notify_user_safe(
-            uid,
-            f"🤲 <b>{hatm.title}</b> дуоси қилинди. Аллоҳ қабул қилсин!",
-        )
+    # Send Dua post directly to the Telegram group / channel (not spamming bot DMs)
+    if _channel_dua_callback:
+        try:
+            await _channel_dua_callback(hatm, new_hatm)
+        except Exception as exc:
+            logger.warning(f"Group dua callback error: {exc}")
 
     return hatm, new_hatm
 

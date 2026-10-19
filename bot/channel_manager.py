@@ -21,15 +21,14 @@ logger = logging.getLogger("nur_hatm.bot.channel")
 
 def build_channel_hatm_text(hatm, top_user: Optional[User]) -> str:
     """
-    Generates a clean, Apple-style structured Telegram Channel post for the live Hatm board,
-    including the Top reader badge at the bottom: `🏆 Top: Ҳумайро - 142 пора`.
+    Generates a clean, minimalist Telegram Channel post for the live Hatm board.
+    Zero redundant guides or repetitive status words.
     """
     sorted_juzs = sorted(hatm.juzs, key=lambda j: j.number)
     done_count = sum(1 for j in sorted_juzs if j.status == JuzStatus.DONE.value)
     booked_count = sum(1 for j in sorted_juzs if j.status == JuzStatus.BOOKED.value)
     free_count = sum(1 for j in sorted_juzs if j.status == JuzStatus.FREE.value)
 
-    progress_pct = int((done_count / 30) * 100)
     filled_blocks = int(done_count / 3)
     bar = "🟨" * filled_blocks + "🟩" * int(booked_count / 3)
     bar = (bar + "⬜" * 10)[:10]
@@ -38,35 +37,27 @@ def build_channel_hatm_text(hatm, top_user: Optional[User]) -> str:
         f"🌙 <b>{hatm.title}</b>",
     ]
     if hatm.dedication:
-        lines.append(f"<i>«{hatm.dedication}»</i>\n")
-    else:
-        lines.append("")
-
-    lines.append(
-        f"📊 <b>Ҳолат:</b> {done_count}/30 ўқилди ({progress_pct}%) | ⏳ Банд: {booked_count} | ⚪ Бўш: {free_count}"
-    )
+        lines.append(f"<i>«{hatm.dedication}»</i>")
+    lines.append("")
+    lines.append(f"📊 {done_count}/30 ўқилди • ⏳ {booked_count} банд • ⚪ {free_count} бўш")
     lines.append(f"<code>[{bar}]</code>\n")
 
-    # Compact 3-column or clean list of 30 Juzs
     juz_lines = []
     for j in sorted_juzs:
         if j.status == JuzStatus.DONE.value:
             reader = j.user_name or "Муслим"
-            juz_lines.append(f"✅ <b>{j.number:02d}-пора:</b> {reader} <i>(Ўқилди)</i>")
+            juz_lines.append(f"✅ <b>{j.number:02d}-пора:</b> {reader}")
         elif j.status == JuzStatus.BOOKED.value:
             reader = j.user_name or "Муслим"
-            juz_lines.append(f"🟢 <b>{j.number:02d}-пора:</b> {reader} <i>(Ўқилмоқда ⏳)</i>")
+            juz_lines.append(f"⏳ <b>{j.number:02d}-пора:</b> {reader}")
         else:
-            juz_lines.append(f"⚪ <b>{j.number:02d}-пора:</b> <i>Бўш — танлаш мумкин</i>")
+            juz_lines.append(f"⚪ <b>{j.number:02d}-пора:</b> Бўш")
 
     lines.extend(juz_lines)
     lines.append("")
 
-    if hatm.dua_done:
-        lines.append("🤲 <b>Ушбу Хатми Қуръон дуоси қилинди! Аллоҳ қабул айласин!</b>\n")
-
     if top_user and top_user.total_juz > 0:
-        lines.append(f"🏆 Top: {top_user.name} — {top_user.total_juz} пора ({top_user.rating_points} балл)")
+        lines.append(f"🏆 Топ: {top_user.name} — {top_user.total_juz} пора")
 
     return "\n".join(lines)
 
@@ -84,6 +75,69 @@ def build_channel_keyboard(hatm_id: Optional[int] = None) -> InlineKeyboardMarku
             ]
         ]
     )
+
+
+async def send_group_dua(bot: Optional[Bot], hatm, new_hatm=None) -> None:
+    """
+    Sends the completion Dua directly to the Telegram group / channel,
+    including the Dua text and participant acknowledgments.
+    """
+    if not bot or not settings.CHANNEL_ID:
+        return
+
+    dua_text = (hatm.dua_message or "").strip()
+    if not dua_text:
+        dua_text = (
+            "Аллоҳим! Ушбу ўқилган Қуръони Карим оятларининг нури ва савобини "
+            "Пайғамбаримиз Муҳаммад Мустафо ﷺ руҳи покларига, барча ўтган мўмин-мусулмонлар "
+            "руҳига ҳамда хатмда қатнашган қори ва қорияларимизнинг икки дунё саодатига "
+            "васила қилгин! Омин!"
+        )
+
+    # Get distinct readers who completed Juzs in this Hatm
+    done_juzs = [j for j in hatm.juzs if j.status == JuzStatus.DONE.value]
+    readers = []
+    seen = set()
+    for j in done_juzs:
+        uname = j.user_name or "Муслим"
+        if uname not in seen:
+            seen.add(uname)
+            readers.append(uname)
+
+    lines = [
+        f"🤲 <b>{hatm.title} Дуоси</b>\n",
+        f"<i>«{dua_text}»</i>\n",
+    ]
+    if readers:
+        readers_str = ", ".join(readers[:15])
+        if len(readers) > 15:
+            readers_str += f" ва яна {len(readers) - 15} киши"
+        lines.append(f"✨ <b>Қатнашганлар:</b> {readers_str}\n")
+
+    lines.append("🤲 Аллоҳ қабул қилсин! Омин!")
+
+    kb = None
+    if new_hatm:
+        kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=f"📖 {new_hatm.title}га қўшилиш",
+                        url=settings.bot_link(new_hatm.id),
+                    )
+                ]
+            ]
+        )
+
+    try:
+        await bot.send_message(
+            chat_id=settings.CHANNEL_ID,
+            text="\n".join(lines),
+            parse_mode=ParseMode.HTML,
+            reply_markup=kb,
+        )
+    except Exception as exc:
+        logger.warning(f"Could not send group dua: {exc}")
 
 
 async def delete_channel_post(bot: Optional[Bot], message_id: int) -> None:
