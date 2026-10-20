@@ -1,8 +1,9 @@
+import asyncio
 import logging
-from typing import Optional
+from typing import Dict, List, Optional, Set, Tuple
 
 from aiogram import Bot, Dispatcher, F, Router
-from aiogram.enums import ChatMemberStatus, ParseMode
+from aiogram.enums import ChatMemberStatus, ContentType, ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
     CallbackQuery,
@@ -37,9 +38,9 @@ logger = logging.getLogger("nur_hatm.bot.handlers")
 router = Router()
 
 # Strong reference set to avoid asyncio garbage-collection of sleep tasks
-_bg_tasks: set[asyncio.Task] = set()
+_bg_tasks: Set[asyncio.Task] = set()
 # Tracks the last welcome/menu message ID per user in DM to keep the chat 100% single-message
-_user_last_menu_msg_id: dict[int, int] = {}
+_user_last_menu_msg_id: Dict[int, int] = {}
 
 
 def safe_create_task(coro) -> asyncio.Task:
@@ -447,12 +448,12 @@ async def on_my_chat_member(event: ChatMemberUpdated) -> None:
 
 
 @router.message(F.content_type.in_({
-    "new_chat_members",
-    "left_chat_member",
-    "new_chat_title",
-    "new_chat_photo",
-    "delete_chat_photo",
-    "pinned_message",
+    ContentType.NEW_CHAT_MEMBERS,
+    ContentType.LEFT_CHAT_MEMBER,
+    ContentType.NEW_CHAT_TITLE,
+    ContentType.NEW_CHAT_PHOTO,
+    ContentType.DELETE_CHAT_PHOTO,
+    ContentType.PINNED_MESSAGE,
 }))
 async def delete_group_service_messages(message: Message, bot: Bot) -> None:
     """

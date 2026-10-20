@@ -1,5 +1,6 @@
+import asyncio
 import logging
-from typing import Optional
+from typing import Dict, List, Optional
 
 from aiogram import Bot
 from aiogram.enums import ParseMode
@@ -195,7 +196,7 @@ async def sync_channel_board(bot: Optional[Bot], hatm_id: Optional[int] = None) 
             logger.warning(f"Could not sync channel post: {exc}")
 
 
-_user_reminder_messages: dict[int, list[int]] = {}
+_user_reminder_messages: Dict[int, List[int]] = {}
 
 
 async def send_user_notification(bot: Optional[Bot], user_id: int, text: str) -> None:
