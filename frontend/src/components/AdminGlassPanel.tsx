@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   BellRing,
@@ -59,11 +59,21 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
   const [newAdminName, setNewAdminName] = useState<string>('');
   const [busy, setBusy] = useState<boolean>(false);
 
+  // Prevent auto-refresh (polling) from clobbering what the admin is currently typing!
+  // Only re-sync form inputs when switching to a DIFFERENT hatm ID.
+  const lastHatmIdRef = useRef<number>(hatm.id);
+
   useEffect(() => {
-    setTimerHours(hatm.timer_hours);
-    setHatmTitle(hatm.title);
-    setHatmDedication(hatm.dedication || '');
-  }, [hatm]);
+    if (lastHatmIdRef.current !== hatm.id) {
+      lastHatmIdRef.current = hatm.id;
+      setTimerHours(hatm.timer_hours || 72);
+      setHatmTitle(hatm.title);
+      setHatmDedication(hatm.dedication || '');
+      if (hatm.dua_message) {
+        setDuaMessage(hatm.dua_message);
+      }
+    }
+  }, [hatm.id, hatm.timer_hours, hatm.title, hatm.dedication, hatm.dua_message]);
 
   useEffect(() => {
     fetchAdminOverview(currentUser.id)
