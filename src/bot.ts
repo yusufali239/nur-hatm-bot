@@ -280,7 +280,7 @@ export async function handleTelegramWebhook(
         return new Response('ok');
       }
 
-      const adminUsersRes = await env.DB.prepare('SELECT * FROM users WHERE is_admin = 1 OR is_super_admin = 1').all<UserRow>();
+      const adminUsersRes = await env.DB.prepare('SELECT * FROM users WHERE (is_admin = 1 OR is_super_admin = 1) AND id NOT IN (123456789, 1234567)').all<UserRow>();
       const list = adminUsersRes.results || [];
       const lines = ['👑 <b>Админлар рўйхати:</b>\n'];
       for (const a of list) {

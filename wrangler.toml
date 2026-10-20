@@ -19,14 +19,11 @@ database_id = "1d6c8c12-05d0-4a4d-9805-9694d6043181"
 crons = ["* * * * *"]
 
 [vars]
-# Telegram Bot Token (Can also be set via `wrangler secret put BOT_TOKEN`)
-BOT_TOKEN = "8000000000:AAH_your_telegram_bot_token_here"
-# Bot username without "@"
-BOT_USERNAME = "nurHatmBot"
-# Channel/Group ID for live live board updates: @hatmiquaan
+# Channel/Group username or ID for live board updates & completion Dua
 CHANNEL_ID = "@hatmiquaan"
-# Super Admin Telegram User IDs (comma-separated)
-ADMIN_IDS = "123456789"
+BOT_USERNAME = "nurHatmBot"
+# Super Admin Telegram User IDs (leave empty or set via wrangler secret / env)
+ADMIN_IDS = ""
 # Default reading timer (hours)
 DEFAULT_TIMER_HOURS = "72"
 # Points rewarded per completed Juz

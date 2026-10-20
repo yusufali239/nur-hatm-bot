@@ -3,11 +3,12 @@ import { syncChannelBoard, deleteChannelPost, sendGroupDua } from './channel';
 import { sendMessage, deleteMessage, getBotToken } from './telegram';
 
 export function getAdminIds(env: Env): number[] {
-  const raw = env.ADMIN_IDS || '123456789';
+  const raw = env.ADMIN_IDS || '';
+  if (!raw.trim()) return [];
   return raw
     .split(',')
     .map((s) => parseInt(s.trim(), 10))
-    .filter((n) => !isNaN(n));
+    .filter((n) => !isNaN(n) && n !== 123456789 && n !== 1234567);
 }
 
 export function isAdminUser(env: Env, user: UserRow | null): boolean {
@@ -107,7 +108,10 @@ export async function ensureInitialized(db: D1Database, env: Env): Promise<void>
     await db.batch(batch);
   }
 
-  // Seed super-admins from config
+  // Clean up legacy test/dummy admin IDs (123456789, 1234567)
+  await db.prepare('DELETE FROM users WHERE id IN (123456789, 1234567)').run();
+
+  // Seed super-admins from config if configured
   const adminIds = getAdminIds(env);
   for (const aid of adminIds) {
     await db.prepare(`

@@ -57,6 +57,7 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
 
   const [newAdminId, setNewAdminId] = useState<string>('');
   const [newAdminName, setNewAdminName] = useState<string>('');
+  const [showAddAdmin, setShowAddAdmin] = useState<boolean>(false);
   const [busy, setBusy] = useState<boolean>(false);
 
   // Prevent auto-refresh (polling) from clobbering what the admin is currently typing!
@@ -77,7 +78,7 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
 
   useEffect(() => {
     fetchAdminOverview(currentUser.id)
-      .then((res) => setAdmins(res.admins))
+      .then((res) => setAdmins((res.admins || []).filter((a) => a.id !== 123456789 && a.id !== 1234567)))
       .catch(() => {});
   }, [currentUser.id]);
 
@@ -214,9 +215,11 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
         target_user_id: parsedId,
         target_user_name: newAdminName.trim() || `Admin #${parsedId}`,
       });
-      setAdmins(res.admins);
+      const filtered = (res.admins || []).filter((a) => a.id !== 123456789 && a.id !== 1234567);
+      setAdmins(filtered);
       setNewAdminId('');
       setNewAdminName('');
+      setShowAddAdmin(false);
       onNotify(res.message, 'success');
     } catch (err: any) {
       onNotify(err.message || 'Хатолик', 'error');
@@ -233,7 +236,8 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
         admin_id: currentUser.id,
         target_user_id: targetId,
       });
-      setAdmins(res.admins);
+      const filtered = (res.admins || []).filter((a) => a.id !== 123456789 && a.id !== 1234567);
+      setAdmins(filtered);
       onNotify(res.message, 'success');
     } catch (err: any) {
       onNotify(err.message || 'Хатолик', 'error');
@@ -447,59 +451,127 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
 
       {/* 4. Мульти-Админлар */}
       <div className="liquid-glass rounded-3xl p-4 space-y-3">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="w-4 h-4 text-amber-300" />
-          <h4 className="text-sm font-bold text-white">Админлар</h4>
-        </div>
-
-        <form onSubmit={handleAddAdmin} className="flex gap-2">
-          <input
-            type="number"
-            placeholder="Telegram ID"
-            value={newAdminId}
-            onChange={(e) => setNewAdminId(e.target.value)}
-            className="flex-1 rounded-xl bg-white/5 border border-white/15 px-3 py-1.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-amber-300"
-          />
-          <input
-            type="text"
-            placeholder="Исми"
-            value={newAdminName}
-            onChange={(e) => setNewAdminName(e.target.value)}
-            className="w-24 rounded-xl bg-white/5 border border-white/15 px-2.5 py-1.5 text-xs text-white placeholder-white/40 focus:outline-none focus:border-amber-300"
-          />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-amber-300" />
+            <h4 className="text-sm font-bold text-white">Админлар ({admins.length})</h4>
+          </div>
           <button
-            type="submit"
-            disabled={busy}
-            className="px-3 py-1.5 rounded-xl bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1 shrink-0"
+            type="button"
+            onClick={() => setShowAddAdmin(!showAddAdmin)}
+            className="px-2.5 py-1.5 rounded-xl bg-amber-400/20 hover:bg-amber-400/30 border border-amber-300/30 text-amber-200 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>Қўшиш</span>
+            <span>{showAddAdmin ? 'Бекор қилиш' : '+ Админ қўшиш'}</span>
           </button>
-        </form>
+        </div>
 
+        {/* Админлар рўйхати */}
         <div className="space-y-1.5">
-          {admins.map((a) => (
-            <div
-              key={a.id}
-              className="rounded-xl bg-white/5 border border-white/10 px-3 py-1.5 flex items-center justify-between text-xs"
-            >
-              <div className="flex items-center gap-2">
-                <span>{a.is_super_admin ? '👑' : '🛡'}</span>
-                <span className="font-semibold text-white">{a.name}</span>
-                <span className="text-[10px] text-white/40">({a.id})</span>
+          {admins.length === 0 ? (
+            <div className="text-xs text-white/40 italic py-2 text-center">
+              Ҳозирча бошқа админлар йўқ
+            </div>
+          ) : (
+            admins.map((a) => (
+              <div
+                key={a.id}
+                className="rounded-xl bg-white/5 border border-white/10 px-3 py-2 flex items-center justify-between text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">{a.is_super_admin ? '👑' : '🛡'}</span>
+                  <div>
+                    <span className="font-semibold text-white">{a.name}</span>
+                    <span className="text-[10px] text-white/40 ml-1.5">({a.id})</span>
+                  </div>
+                </div>
+                {!a.is_super_admin && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveAdmin(a.id)}
+                    className="p-1.5 rounded-lg text-rose-300 hover:bg-rose-500/20 active:scale-90 transition-all"
+                    title="Админни ўчириш"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
-              {!a.is_super_admin && (
+            ))
+          )}
+        </div>
+
+        {/* Пастки тугма (форма ёпиқ бўлганда тез очиш учун) */}
+        {!showAddAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowAddAdmin(true)}
+            className="w-full py-2.5 rounded-2xl border border-dashed border-white/20 hover:border-amber-400/40 text-white/70 hover:text-amber-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all bg-white/[0.02]"
+          >
+            <UserPlus className="w-3.5 h-3.5 text-amber-400" />
+            <span>+ Янги админ қўшиш</span>
+          </button>
+        )}
+
+        {/* Админ қўшиш шакли */}
+        <AnimatePresence>
+          {showAddAdmin && (
+            <motion.form
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              onSubmit={handleAddAdmin}
+              className="p-3.5 rounded-2xl bg-black/30 border border-amber-400/25 space-y-3"
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-amber-200 flex items-center gap-1.5">
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Янги админ қўшиш</span>
+                </span>
                 <button
                   type="button"
-                  onClick={() => handleRemoveAdmin(a.id)}
-                  className="p-1 rounded-lg text-rose-300 hover:bg-rose-500/20"
+                  onClick={() => setShowAddAdmin(false)}
+                  className="text-white/40 hover:text-white text-[11px]"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  Ёпиш
                 </button>
-              )}
-            </div>
-          ))}
-        </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] text-white/50 block mb-1">Telegram ID рақами</label>
+                  <input
+                    type="number"
+                    placeholder="Масалан: 98765432"
+                    value={newAdminId}
+                    onChange={(e) => setNewAdminId(e.target.value)}
+                    className="w-full rounded-xl bg-white/5 border border-white/15 px-3 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-amber-300"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-white/50 block mb-1">Админ исми</label>
+                  <input
+                    type="text"
+                    placeholder="Масалан: Алишер"
+                    value={newAdminName}
+                    onChange={(e) => setNewAdminName(e.target.value)}
+                    className="w-full rounded-xl bg-white/5 border border-white/15 px-3 py-2 text-xs text-white placeholder-white/40 focus:outline-none focus:border-amber-300"
+                  />
+                </div>
+              </div>
+
+              <motion.button
+                whileTap={{ scale: 0.98 }}
+                type="submit"
+                disabled={busy || !newAdminId.trim()}
+                className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 text-slate-950 font-bold text-xs flex items-center justify-center gap-2 shadow-sm disabled:opacity-40 transition-all"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Сақлаш ва Админ қилиш</span>
+              </motion.button>
+            </motion.form>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* JUZ EDIT MODAL */}
