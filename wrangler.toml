@@ -1,0 +1,37 @@
+name = "nur-hatm-bot"
+main = "src/index.ts"
+compatibility_date = "2024-10-20"
+compatibility_flags = ["nodejs_compat"]
+
+# 🚀 Unified Static Assets: Serves the React Mini App on Cloudflare Edge!
+[assets]
+directory = "./frontend/dist"
+binding = "ASSETS"
+
+# 🗄️ Cloudflare D1 Database Binding
+[[d1_databases]]
+binding = "DB"
+database_name = "nur-hatm-db"
+database_id = "nur-hatm-db"
+
+# ⏰ Cron Trigger: Runs background expiration & reminder worker every minute (Never sleeps!)
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+# Telegram Bot Token (Can also be set via `wrangler secret put BOT_TOKEN`)
+BOT_TOKEN = "8000000000:AAH_your_telegram_bot_token_here"
+# Bot username without "@"
+BOT_USERNAME = "nurHatmBot"
+# Channel/Group ID for live live board updates: @hatmiquaan
+CHANNEL_ID = "@hatmiquaan"
+# Super Admin Telegram User IDs (comma-separated)
+ADMIN_IDS = "123456789"
+# Default reading timer (hours)
+DEFAULT_TIMER_HOURS = "72"
+# Points rewarded per completed Juz
+POINTS_ON_COMPLETE = "10"
+# Penalty points deducted on expired Juz
+POINTS_ON_EXPIRE_PENALTY = "5"
+# Public URL of the Mini App (Leave empty to auto-detect Worker domain)
+WEBAPP_URL = ""

@@ -5,16 +5,6 @@ const getApiBase = (): string => {
   if (envUrl && typeof envUrl === 'string' && envUrl.trim()) {
     return envUrl.trim().replace(/\/+$/, '');
   }
-
-  // When loaded on Vercel or public domain without explicit env var,
-  // automatically point to the deployed Render backend
-  if (
-    typeof window !== 'undefined' &&
-    (window.location.hostname.includes('vercel.app') || !window.location.hostname.includes('localhost'))
-  ) {
-    return 'https://nur-hatm-bot.onrender.com/api';
-  }
-
   return '/api';
 };
 

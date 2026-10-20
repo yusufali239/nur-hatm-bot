@@ -1,0 +1,24 @@
+{
+  "name": "nur-hatm-bot",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:frontend": "npm --prefix frontend run build",
+    "build": "npm run build:frontend",
+    "deploy": "npm run build && npx wrangler deploy",
+    "deploy:pages": "npm --prefix frontend run build && npx wrangler pages deploy frontend/dist --project-name=nur-hatm-bot",
+    "d1:init": "npx wrangler d1 execute nur-hatm-db --local --file=./schema.sql",
+    "d1:init:prod": "npx wrangler d1 execute nur-hatm-db --remote --file=./schema.sql",
+    "dev": "npx wrangler dev",
+    "start": "npx wrangler dev"
+  },
+  "dependencies": {
+    "hono": "^4.6.8"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241022.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^3.114.17"
+  }
+}

@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Cloudflare Wrangler
+.wrangler/
+.dev.vars
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+hatm_local.db
+
+# Frontend Build
+frontend/dist/
+frontend/node_modules/
+frontend/package-lock.json
+frontend/tsconfig.tsbuildinfo
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
