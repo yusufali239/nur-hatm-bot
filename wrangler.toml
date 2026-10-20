@@ -12,7 +12,7 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "nur-hatm-db"
-database_id = "nur-hatm-db"
+database_id = "1d6c8c12-05d0-4a4d-9805-9694d6043181"
 
 # ⏰ Cron Trigger: Runs background expiration & reminder worker every minute (Never sleeps!)
 [triggers]
