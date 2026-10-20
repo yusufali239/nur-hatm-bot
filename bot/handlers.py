@@ -26,6 +26,7 @@ from backend.services import (
     release_all_juzs_for_blocked_user,
 )
 from bot.channel_manager import (
+    clear_user_notifications,
     delete_channel_post,
     send_group_dua,
     send_user_notification,
@@ -34,6 +35,18 @@ from bot.channel_manager import (
 
 logger = logging.getLogger("nur_hatm.bot.handlers")
 router = Router()
+
+# Strong reference set to avoid asyncio garbage-collection of sleep tasks
+_bg_tasks: set[asyncio.Task] = set()
+# Tracks the last welcome/menu message ID per user in DM to keep the chat 100% single-message
+_user_last_menu_msg_id: dict[int, int] = {}
+
+
+def safe_create_task(coro) -> asyncio.Task:
+    task = asyncio.create_task(coro)
+    _bg_tasks.add(task)
+    task.add_done_callback(_bg_tasks.discard)
+    return task
 
 
 def get_main_liquid_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
@@ -85,9 +98,27 @@ def format_main_welcome_text(user: User, hatm) -> str:
 
 
 @router.message(CommandStart())
-async def cmd_start(message: Message) -> None:
+async def cmd_start(message: Message, bot: Bot) -> None:
     if not message.from_user:
         return
+
+    user_id = message.from_user.id
+    chat_id = message.chat.id
+
+    # 1. Auto-delete old bot menu in DM so chat has strictly ONE current message
+    old_msg_id = _user_last_menu_msg_id.pop(user_id, None)
+    if old_msg_id:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=old_msg_id)
+        except Exception:
+            pass
+
+    # 2. In supergroups, delete the /start command message to keep group pristine
+    if message.chat.type != "private":
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=message.message_id)
+        except Exception:
+            pass
 
     async with AsyncSessionLocal() as session:
         user = await get_or_create_user(
@@ -100,11 +131,13 @@ async def cmd_start(message: Message) -> None:
         await session.commit()
 
     welcome = format_main_welcome_text(user, hatm)
-    await message.answer(
+    sent_msg = await message.answer(
         welcome,
         parse_mode=ParseMode.HTML,
         reply_markup=get_main_liquid_keyboard(is_admin=user.is_admin),
     )
+    # Save current menu message ID for next clean-up
+    _user_last_menu_msg_id[user_id] = sent_msg.message_id
 
 
 @router.message(Command("admins"))
@@ -413,28 +446,51 @@ async def on_my_chat_member(event: ChatMemberUpdated) -> None:
                 logger.info(f"User {user_id} blocked bot -> auto-released Juzs: {freed}")
 
 
+@router.message(F.content_type.in_({
+    "new_chat_members",
+    "left_chat_member",
+    "new_chat_title",
+    "new_chat_photo",
+    "delete_chat_photo",
+    "pinned_message",
+}))
+async def delete_group_service_messages(message: Message, bot: Bot) -> None:
+    """
+    Auto-deletes join/leave/pinned service clutter in groups where bot is admin.
+    """
+    try:
+        await bot.delete_message(chat_id=message.chat.id, message_id=message.message_id)
+    except Exception:
+        pass
+
+
 @router.message()
-async def reject_free_text_and_show_buttons(message: Message) -> None:
+async def reject_free_text_and_show_buttons(message: Message, bot: Bot) -> None:
     """
     Clean Chat Enforcer:
-    If user writes any random text, the bot gently informs them and
-    auto-deletes both the user's message and the bot's tip in a few seconds,
-    keeping the chat 100% pristine!
+    If user writes any random text, the bot informs them and
+    auto-deletes the tip and user message after 4 seconds guaranteed!
     """
     if not message.from_user:
         return
 
-    # Delete user's random message after 2 seconds
-    async def _cleanup(user_msg: Message, tip_msg: Message):
+    chat_id = message.chat.id
+    user_msg_id = message.message_id
+
+    async def _cleanup(tip_id: int):
         await asyncio.sleep(4.0)
+        # 1. Guaranteed deletion of bot's own tip message
         try:
-            await user_msg.delete()
-        except Exception:
-            pass
-        try:
-            await tip_msg.delete()
-        except Exception:
-            pass
+            await bot.delete_message(chat_id=chat_id, message_id=tip_id)
+        except Exception as exc:
+            logger.warning(f"Failed to auto-delete tip message {tip_id}: {exc}")
+
+        # 2. In groups/channels, delete user message too
+        if message.chat.type != "private":
+            try:
+                await bot.delete_message(chat_id=chat_id, message_id=user_msg_id)
+            except Exception as exc:
+                logger.debug(f"Could not delete user message {user_msg_id}: {exc}")
 
     try:
         tip = await message.answer(
@@ -451,9 +507,9 @@ async def reject_free_text_and_show_buttons(message: Message) -> None:
                 ]
             ),
         )
-        asyncio.create_task(_cleanup(message, tip))
-    except Exception:
-        pass
+        safe_create_task(_cleanup(tip.message_id))
+    except Exception as exc:
+        logger.warning(f"Could not send tip message: {exc}")
 
 
 def setup_bot() -> Optional[ tuple[Bot, Dispatcher] ]:
@@ -479,7 +535,10 @@ def setup_bot() -> Optional[ tuple[Bot, Dispatcher] ]:
         async def _dua_cb(hatm, new_hatm=None):
             await send_group_dua(bot, hatm, new_hatm)
 
-        register_bot_callbacks(_sync_cb, _notify_cb, _delete_cb, _dua_cb)
+        async def _clear_notify_cb(user_id: int):
+            await clear_user_notifications(bot, user_id)
+
+        register_bot_callbacks(_sync_cb, _notify_cb, _delete_cb, _dua_cb, _clear_notify_cb)
         return bot, dp
     except Exception as exc:
         logger.error(f"Failed to initialize Telegram Bot: {exc}")

@@ -195,10 +195,14 @@ async def sync_channel_board(bot: Optional[Bot], hatm_id: Optional[int] = None) 
             logger.warning(f"Could not sync channel post: {exc}")
 
 
+_user_reminder_messages: dict[int, list[int]] = {}
+
+
 async def send_user_notification(bot: Optional[Bot], user_id: int, text: str) -> None:
     """
     Sends a short Telegram DM to a user. If the user has blocked/banned the bot
     (`TelegramForbiddenError`), automatically releases all of their active booked Juzs!
+    Tracks reminder message IDs for auto-deletion upon Juz completion.
     """
     if not bot:
         return
@@ -214,16 +218,34 @@ async def send_user_notification(bot: Optional[Bot], user_id: int, text: str) ->
                 ]
             ]
         )
-        await bot.send_message(
+        msg = await bot.send_message(
             chat_id=user_id,
             text=text,
             parse_mode=ParseMode.HTML,
             reply_markup=kb,
         )
+        if user_id not in _user_reminder_messages:
+            _user_reminder_messages[user_id] = []
+        _user_reminder_messages[user_id].append(msg.message_id)
     except TelegramForbiddenError:
         logger.warning(f"User {user_id} blocked the bot! Releasing their booked Juzs.")
         async with AsyncSessionLocal() as session:
             await release_all_juzs_for_blocked_user(session, user_id)
     except Exception as exc:
         logger.debug(f"Could not send notification to {user_id}: {exc}")
+
+
+async def clear_user_notifications(bot: Optional[Bot], user_id: int) -> None:
+    """
+    Auto-deletes all previous reminder messages in DM when user completes their Juzs.
+    Keeps user DM clean and free of outdated countdown reminders!
+    """
+    if not bot or user_id not in _user_reminder_messages:
+        return
+    msg_ids = _user_reminder_messages.pop(user_id, [])
+    for mid in msg_ids:
+        try:
+            await bot.delete_message(chat_id=user_id, message_id=mid)
+        except Exception:
+            pass
 

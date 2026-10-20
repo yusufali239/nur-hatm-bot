@@ -25,15 +25,23 @@ _channel_sync_callback = None
 _user_notify_callback = None
 _channel_delete_callback = None
 _channel_dua_callback = None
+_user_clear_notify_callback = None
 _debounce_tasks: Dict[Optional[int], asyncio.Task] = {}
 
 
-def register_bot_callbacks(channel_sync_fn, user_notify_fn, channel_delete_fn=None, channel_dua_fn=None) -> None:
-    global _channel_sync_callback, _user_notify_callback, _channel_delete_callback, _channel_dua_callback
+def register_bot_callbacks(
+    channel_sync_fn,
+    user_notify_fn,
+    channel_delete_fn=None,
+    channel_dua_fn=None,
+    user_clear_notify_fn=None,
+) -> None:
+    global _channel_sync_callback, _user_notify_callback, _channel_delete_callback, _channel_dua_callback, _user_clear_notify_callback
     _channel_sync_callback = channel_sync_fn
     _user_notify_callback = user_notify_fn
     _channel_delete_callback = channel_delete_fn
     _channel_dua_callback = channel_dua_fn
+    _user_clear_notify_callback = user_clear_notify_fn
 
 
 def trigger_debounced_channel_sync(hatm_id: Optional[int] = None) -> None:
@@ -77,6 +85,15 @@ async def notify_user_safe(user_id: int, text: str) -> None:
             await _user_notify_callback(user_id, text)
         except Exception as exc:
             logger.warning(f"User notify error for {user_id}: {exc}")
+
+
+async def clear_user_notifications_safe(user_id: int) -> None:
+    """Auto-deletes old reminder DMs from the bot chat when user finishes their Juz."""
+    if _user_clear_notify_callback:
+        try:
+            await _user_clear_notify_callback(user_id)
+        except Exception as exc:
+            logger.debug(f"User clear notify error for {user_id}: {exc}")
 
 
 def format_duration(hours: int) -> str:
@@ -385,6 +402,7 @@ async def complete_user_juzs(
     await session.refresh(user)
 
     if completed:
+        await clear_user_notifications_safe(user_id)
         trigger_debounced_channel_sync(hatm.id)
 
         # Check if all 30 Juzs are now completed
@@ -440,6 +458,7 @@ async def release_user_juzs(
     await session.refresh(user)
 
     if released:
+        await clear_user_notifications_safe(user_id)
         trigger_debounced_channel_sync(hatm.id)
 
     return released, hatm, user
@@ -880,6 +899,7 @@ async def sweep_expired_juzs_once() -> int:
         await notify_user_safe(uid, f"⏳ {nums}-пора: {left_h} соат қолди")
 
     for uid, jnums in expired_by_user.items():
+        await clear_user_notifications_safe(uid)
         penalty = len(jnums) * settings.POINTS_ON_EXPIRE_PENALTY
         nums = ", ".join(str(n) for n in sorted(jnums))
         await notify_user_safe(uid, f"⌛️ {nums}-пора муддати тугади • −{penalty} балл")
