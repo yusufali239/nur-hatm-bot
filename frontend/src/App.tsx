@@ -281,14 +281,9 @@ export const App: React.FC = () => {
               🌙
             </div>
             <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <h1 className="text-sm font-extrabold tracking-tight text-white truncate">
-                  NUR HATM
-                </h1>
-                <span className="px-1.5 py-0.5 rounded-full bg-white/10 border border-white/15 text-[9px] font-semibold uppercase tracking-wider text-amber-200">
-                  Қуръон Хатми
-                </span>
-              </div>
+              <h1 className="text-sm font-extrabold tracking-tight text-white truncate">
+                NUR HATM
+              </h1>
               <p className="text-[11px] text-white/60 truncate">
                 {user?.name || identity.name} • {user?.total_juz ?? 0} пора ({user?.total_hatm ?? 0} хатм)
               </p>
