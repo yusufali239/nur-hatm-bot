@@ -13,7 +13,7 @@ import {
   X,
   Check,
 } from 'lucide-react';
-import { HatmData, JuzItem, UserProfile } from '../types';
+import { FullStateResponse, HatmData, JuzItem, UserProfile } from '../types';
 import {
   adminDeleteHatm,
   adminSetJuz,
@@ -31,6 +31,7 @@ interface AdminGlassPanelProps {
   currentUser: UserProfile;
   hatm: HatmData;
   onHatmUpdated: (hatm: HatmData) => void;
+  onFullStateUpdated?: (state: FullStateResponse) => void;
   onNotify: (msg: string, tone?: 'success' | 'error') => void;
 }
 
@@ -38,6 +39,7 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
   currentUser,
   hatm,
   onHatmUpdated,
+  onFullStateUpdated,
   onNotify,
 }) => {
   const [admins, setAdmins] = useState<UserProfile[]>([]);
@@ -139,7 +141,12 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
   };
 
   const handleDeleteHatm = async () => {
-    if (!window.confirm(`Ҳақиқатан ҳам «${hatm.title}»ни бутунлай ўчирмоқчимисиз?`)) return;
+    if (
+      !window.confirm(
+        `Ҳақиқатан ҳам «${hatm.title}»ни бутунлай ўчирмоқчимисиз?\nУшбу хатм базадан, каналдан ва рўйхатлардан бутунлай ўчирилади.`
+      )
+    )
+      return;
     triggerHaptic('warning');
     setBusy(true);
     try {
@@ -147,7 +154,11 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
         admin_id: currentUser.id,
         hatm_id: hatm.id,
       });
-      onHatmUpdated(res.active_hatm);
+      if (res.full_state && onFullStateUpdated) {
+        onFullStateUpdated(res.full_state);
+      } else {
+        onHatmUpdated(res.active_hatm);
+      }
       onNotify(res.message, 'success');
     } catch (err: any) {
       onNotify(err.message || 'Хатолик', 'error');

@@ -285,11 +285,12 @@ app.post('/api/admin/set-juz', async (c) => {
 
 app.post('/api/admin/delete-hatm', async (c) => {
   const body = await c.req.json<any>();
-  const res = await adminDeleteHatm(c.env.DB, c.env, body.hatm_id);
+  const res = await adminDeleteHatm(c.env.DB, c.env, body.hatm_id, body.admin_id);
   return c.json({
     success: true,
     message: `🗑 «${res.title}» ўчирилди`,
     active_hatm: res.activeHatm,
+    full_state: res.fullState,
   });
 });
 

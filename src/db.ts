@@ -607,19 +607,36 @@ export async function adminUpdateHatm(
 export async function adminDeleteHatm(
   db: D1Database,
   env: Env,
-  hatmId: number
-): Promise<{ title: string; activeHatm: any }> {
+  hatmId: number,
+  adminId: number = 777000
+): Promise<{ title: string; activeHatm: any; fullState: FullStateResponse }> {
   await ensureInitialized(db, env);
   const hatm = await db.prepare('SELECT * FROM hatms WHERE id = ?').bind(hatmId).first<HatmRow>();
   if (!hatm) throw new Error('Хатм топилмади');
 
-  await deleteChannelPost(env, hatm.channel_message_id);
+  // 1. Delete Live Channel Post from @hatmiquaan
+  if (hatm.channel_message_id) {
+    await deleteChannelPost(env, hatm.channel_message_id);
+  }
 
+  // 2. Clean up reminder messages from Telegram for users who had booked juzs in this hatm
+  const bookedUsers = await db.prepare(
+    'SELECT DISTINCT user_id FROM juzs WHERE hatm_id = ? AND user_id IS NOT NULL'
+  ).bind(hatmId).all<{ user_id: number }>();
+  for (const u of (bookedUsers.results || [])) {
+    try {
+      await clearUserReminders(db, env, u.user_id);
+    } catch (_) {}
+  }
+
+  // 3. Delete all Juzs and Hatm record from D1 SQLite completely
   await db.prepare('DELETE FROM juzs WHERE hatm_id = ?').bind(hatmId).run();
   await db.prepare('DELETE FROM hatms WHERE id = ?').bind(hatmId).run();
 
-  // If no active hatms remain, create a new one
+  // 4. Ensure there is at least one active Hatm
   const remainCount = await db.prepare('SELECT COUNT(*) as cnt FROM hatms WHERE status = "active"').first<{ cnt: number }>();
+  let nextActiveHatmId: number | undefined;
+
   if (!remainCount || remainCount.cnt === 0) {
     const maxNum = (await db.prepare('SELECT MAX(number) as mx FROM hatms').first<{ mx: number }>())?.mx || 2598;
     const nextNum = Math.max(maxNum + 1, 2599);
@@ -630,6 +647,7 @@ export async function adminDeleteHatm(
 
     const newHatm = await db.prepare('SELECT * FROM hatms ORDER BY id DESC LIMIT 1').first<HatmRow>();
     if (newHatm) {
+      nextActiveHatmId = newHatm.id;
       const batch = [];
       const insStmt = db.prepare('INSERT INTO juzs (hatm_id, number, status) VALUES (?, ?, "free")');
       for (let i = 1; i <= 30; i++) {
@@ -638,12 +656,21 @@ export async function adminDeleteHatm(
       await db.batch(batch);
       await syncChannelBoard(env, newHatm.id);
     }
+  } else {
+    // If other active hatm exists, sync the latest active hatm to channel board!
+    const latestActive = await db.prepare('SELECT id FROM hatms WHERE status = "active" ORDER BY number DESC LIMIT 1').first<{ id: number }>();
+    if (latestActive) {
+      nextActiveHatmId = latestActive.id;
+      await syncChannelBoard(env, latestActive.id);
+    }
   }
 
-  const fullState = await getFullState(db, env, 777000);
+  // 5. Build completely refreshed full state for the caller
+  const fullState = await getFullState(db, env, adminId, nextActiveHatmId);
   return {
     title: hatm.title,
     activeHatm: fullState.hatm,
+    fullState,
   };
 }
 

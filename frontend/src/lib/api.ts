@@ -259,6 +259,7 @@ export async function adminDeleteHatm(payload: {
     success: boolean;
     message: string;
     active_hatm: HatmData;
+    full_state?: FullStateResponse;
   }>('/admin/delete-hatm', {
     method: 'POST',
     body: JSON.stringify(payload),

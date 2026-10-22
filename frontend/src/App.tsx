@@ -670,6 +670,13 @@ export const App: React.FC = () => {
             onHatmUpdated={(updated) =>
               setState((prev) => (prev ? { ...prev, hatm: updated } : prev))
             }
+            onFullStateUpdated={(full) => {
+              setState(full);
+              if (full.hatm) {
+                setActiveHatmId(full.hatm.id);
+              }
+              loadState(true, full.hatm?.id);
+            }}
             onNotify={showToast}
           />
         )}
