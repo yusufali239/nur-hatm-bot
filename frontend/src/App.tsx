@@ -659,6 +659,12 @@ export const App: React.FC = () => {
           <RatingBoard
             leaderboard={state.leaderboard}
             currentUserId={identity.id}
+            isAdmin={user?.is_admin || false}
+            onFullStateUpdated={(full) => {
+              setState(full);
+              loadState(true);
+            }}
+            onNotify={showToast}
           />
         )}
 

@@ -1,6 +1,6 @@
 import { Env, HatmRow, JuzRow, UserRow } from './types';
 import { getBotToken, sendMessage, editMessageText, deleteMessage, answerCallbackQuery } from './telegram';
-import { getOrCreateUser, getActiveHatm, getLeaderboard, isAdminUser, adminPerformDua, ensureInitialized } from './db';
+import { getOrCreateUser, getActiveHatm, getLeaderboard, isAdminUser, adminPerformDua, ensureInitialized, adminResetUserStats, adminResetAllLeaderboard } from './db';
 
 export function getMainKeyboard(env: Env, webappUrl: string, isAdmin: boolean): any {
   const url = webappUrl || 'https://nur-hatm-bot.vercel.app';
@@ -290,6 +290,36 @@ export async function handleTelegramWebhook(
       lines.push('\n<i>Қўшиш: /admins add [ID] [Исм]\nЎчириш: /admins remove [ID]</i>');
       await sendMessage(token, chatId, lines.join('\n'));
       return new Response('ok');
+    }
+
+    // 2c2. /reset_top and /reset_user commands (Admin only)
+    if (text.startsWith('/reset_top') || text.startsWith('/reset_user')) {
+      const fromUser = msg.from;
+      if (!fromUser) return new Response('ok');
+
+      const user = await getOrCreateUser(env.DB, env, fromUser.id);
+      if (user.is_super_admin !== 1 && user.is_admin !== 1) {
+        await sendMessage(token, chatId, '🔒 Ушбу буйруқ фақат <b>Админлар</b> учун.');
+        return new Response('ok');
+      }
+
+      if (text.startsWith('/reset_user')) {
+        const parts = text.split(/\s+/);
+        const targetId = parseInt(parts[1], 10);
+        if (isNaN(targetId)) {
+          await sendMessage(token, chatId, '❌ Фойдаланувчи Telegram ID рақамини кўрсатинг:\nМасалан: <code>/reset_user 12345678</code>');
+          return new Response('ok');
+        }
+        const res = await adminResetUserStats(env.DB, env, fromUser.id, targetId, false);
+        await sendMessage(token, chatId, res.message);
+        return new Response('ok');
+      }
+
+      if (text.startsWith('/reset_top')) {
+        const res = await adminResetAllLeaderboard(env.DB, env, fromUser.id);
+        await sendMessage(token, chatId, res.message);
+        return new Response('ok');
+      }
     }
 
     // 2d. Clean Chat Enforcer: Any random text is answered with a button tip,

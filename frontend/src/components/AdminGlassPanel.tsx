@@ -9,6 +9,7 @@ import {
   ShieldCheck,
   Sparkles,
   Trash2,
+  Trophy,
   UserPlus,
   X,
   Check,
@@ -16,6 +17,7 @@ import {
 import { FullStateResponse, HatmData, JuzItem, UserProfile } from '../types';
 import {
   adminDeleteHatm,
+  adminResetAllLeaderboard,
   adminSetJuz,
   adminUpdateHatm,
   createNewHatmAdmin,
@@ -583,6 +585,49 @@ export const AdminGlassPanel: React.FC<AdminGlassPanelProps> = ({
             </motion.form>
           )}
         </AnimatePresence>
+      </div>
+
+      {/* 5. Топ ва Рейтинг назорати (Тест натижаларини тозалаш) */}
+      <div className="liquid-glass rounded-3xl p-4 space-y-3 border border-rose-400/20">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-amber-300" />
+            <h4 className="text-sm font-bold text-white">Рейтинг ва Тест назорати</h4>
+          </div>
+          <button
+            type="button"
+            onClick={async () => {
+              if (
+                !window.confirm(
+                  'Ҳақиқатан ҳам барча фойдаланувчиларнинг тест рейтинги ва балларини 0 қилмоқчимисиз?\n(Бу Топдаги барча синов натижаларини тозалайди)'
+                )
+              )
+                return;
+              triggerHaptic('heavy');
+              setBusy(true);
+              try {
+                const res = await adminResetAllLeaderboard({ admin_id: currentUser.id });
+                if (res.full_state && onFullStateUpdated) {
+                  onFullStateUpdated(res.full_state);
+                }
+                onNotify(res.message, 'success');
+              } catch (err: any) {
+                onNotify(err.message || 'Хатолик', 'error');
+              } finally {
+                setBusy(false);
+              }
+            }}
+            disabled={busy}
+            className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/30 text-rose-200 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
+            title="Барча тест балларни 0 қилиш"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Барчасини 0 қилиш</span>
+          </button>
+        </div>
+        <p className="text-[11px] text-white/50">
+          Сиз тест жараёнида ўқилган деб кўринган барча тест баллар ва пораларни ушбу тугма орқали бир лаҳзада 0 га туширишингиз мумкин.
+        </p>
       </div>
 
       {/* JUZ EDIT MODAL */}

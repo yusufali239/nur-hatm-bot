@@ -1,11 +1,16 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Award, BookOpen, Crown, Flame, Sparkles, Trophy } from 'lucide-react';
-import { LeaderboardData } from '../types';
+import { Award, BookOpen, Crown, Flame, Sparkles, Trash2, Trophy } from 'lucide-react';
+import { FullStateResponse, LeaderboardData } from '../types';
+import { adminResetAllLeaderboard, adminResetUserStats } from '../lib/api';
+import { triggerHaptic } from '../lib/telegram';
 
 interface RatingBoardProps {
   leaderboard: LeaderboardData;
   currentUserId: number;
+  isAdmin?: boolean;
+  onFullStateUpdated?: (state: FullStateResponse) => void;
+  onNotify?: (msg: string, tone?: 'success' | 'error') => void;
 }
 
 /**
@@ -16,11 +21,58 @@ interface RatingBoardProps {
 export const RatingBoard: React.FC<RatingBoardProps> = ({
   leaderboard,
   currentUserId,
+  isAdmin = false,
+  onFullStateUpdated,
+  onNotify,
 }) => {
   const { top_users, total_participants, total_completed_juzs, total_completed_hatms } =
     leaderboard;
 
+  const [busy, setBusy] = useState(false);
   const topOne = top_users[0];
+
+  const handleResetUser = async (targetId: number, targetName: string) => {
+    if (!window.confirm(`Ҳақиқатан ҳам «${targetName}»нинг тест натижалари ва балларини 0 га туширмоқчимисиз?`)) {
+      return;
+    }
+    triggerHaptic('warning');
+    setBusy(true);
+    try {
+      const res = await adminResetUserStats({
+        admin_id: currentUserId,
+        target_user_id: targetId,
+      });
+      if (res.full_state && onFullStateUpdated) {
+        onFullStateUpdated(res.full_state);
+      }
+      if (onNotify) onNotify(res.message, 'success');
+    } catch (err: any) {
+      if (onNotify) onNotify(err.message || 'Хатолик', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleResetAll = async () => {
+    if (!window.confirm('Ҳақиқатан ҳам барча фойдаланувчиларнинг тест рейтинги ва балларини 0 қилмоқчимисиз?\n(Бу барча синов натижаларини тозалайди)')) {
+      return;
+    }
+    triggerHaptic('heavy');
+    setBusy(true);
+    try {
+      const res = await adminResetAllLeaderboard({
+        admin_id: currentUserId,
+      });
+      if (res.full_state && onFullStateUpdated) {
+        onFullStateUpdated(res.full_state);
+      }
+      if (onNotify) onNotify(res.message, 'success');
+    } catch (err: any) {
+      if (onNotify) onNotify(err.message || 'Хатолик', 'error');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-4 pb-28">
@@ -88,6 +140,26 @@ export const RatingBoard: React.FC<RatingBoardProps> = ({
           </div>
         )}
       </motion.div>
+
+      {/* Admin Reset Banner */}
+      {isAdmin && (
+        <div className="p-3 rounded-2xl bg-rose-500/10 border border-rose-400/25 flex items-center justify-between gap-2.5 backdrop-blur-md">
+          <div className="min-w-0">
+            <div className="text-xs font-bold text-rose-200">👑 Админ назорати</div>
+            <div className="text-[10px] text-white/50">Тест натижалари ва балларни тозалаш</div>
+          </div>
+          <button
+            type="button"
+            onClick={handleResetAll}
+            disabled={busy}
+            className="px-3 py-1.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-400/30 text-rose-200 font-bold text-xs flex items-center gap-1.5 transition-all shadow-sm active:scale-95 shrink-0"
+            title="Барча тест балларни 0 қилиш"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Топни 0 қилиш</span>
+          </button>
+        </div>
+      )}
 
       {/* Top 10 List */}
       <div className="space-y-2.5">
@@ -168,16 +240,33 @@ export const RatingBoard: React.FC<RatingBoardProps> = ({
                 </div>
               </div>
 
-              {/* Points Pill */}
-              <div className="flex flex-col items-end shrink-0">
-                <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/15 backdrop-blur-md">
-                  <Flame className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-xs font-extrabold text-white tabular-nums">
-                    {u.rating_points}
-                  </span>
-                  <span className="text-[10px] text-white/60">балл</span>
+              {/* Points Pill + Admin Reset */}
+              <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-col items-end">
+                  <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-white/10 border border-white/15 backdrop-blur-md">
+                    <Flame className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-xs font-extrabold text-white tabular-nums">
+                      {u.rating_points}
+                    </span>
+                    <span className="text-[10px] text-white/60">балл</span>
+                  </div>
+                  <span className="text-[10px] text-white/45 mt-1">{u.badge}</span>
                 </div>
-                <span className="text-[10px] text-white/45 mt-1">{u.badge}</span>
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleResetUser(u.id, u.name);
+                    }}
+                    disabled={busy}
+                    title="Фойдаланувчи балларини 0 қилиш"
+                    className="p-2 rounded-xl text-rose-300 hover:text-rose-100 hover:bg-rose-500/20 active:scale-90 transition-all border border-rose-400/20"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </motion.div>
           );

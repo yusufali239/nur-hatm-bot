@@ -2,7 +2,7 @@ import { Env, HatmRow, JuzRow, UserRow } from './types';
 import { botLink, getBotToken, sendMessage, editMessageText, deleteMessage } from './telegram';
 
 export function getChannelId(env: Env): string {
-  return (env.CHANNEL_ID || '@hatmiquaan').trim();
+  return (env.CHANNEL_ID || '@nurhatmquran').trim();
 }
 
 /**

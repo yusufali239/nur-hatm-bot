@@ -15,6 +15,8 @@ import {
   adminPerformDua,
   adminCreateNewHatm,
   adminResetHatm,
+  adminResetUserStats,
+  adminResetAllLeaderboard,
   sweepExpiredJuzs,
   getOrCreateUser,
   getActiveHatm,
@@ -309,6 +311,32 @@ app.post('/api/admin/update-hatm', async (c) => {
     success: true,
     message: `⚙️ Сақланди`,
     active_hatm: activeHatm,
+  });
+});
+
+app.post('/api/admin/reset-user-stats', async (c) => {
+  const body = await c.req.json<any>();
+  const res = await adminResetUserStats(
+    c.env.DB,
+    c.env,
+    body.admin_id,
+    body.target_user_id,
+    Boolean(body.delete_user)
+  );
+  return c.json({
+    success: true,
+    message: res.message,
+    full_state: res.fullState,
+  });
+});
+
+app.post('/api/admin/reset-all-ratings', async (c) => {
+  const body = await c.req.json<any>();
+  const res = await adminResetAllLeaderboard(c.env.DB, c.env, body.admin_id);
+  return c.json({
+    success: true,
+    message: res.message,
+    full_state: res.fullState,
   });
 });
 

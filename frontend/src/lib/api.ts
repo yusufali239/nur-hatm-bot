@@ -284,3 +284,31 @@ export async function adminUpdateHatm(payload: {
   });
 }
 
+export async function adminResetUserStats(payload: {
+  admin_id: number;
+  target_user_id: number;
+  delete_user?: boolean;
+}) {
+  return request<{
+    success: boolean;
+    message: string;
+    full_state: FullStateResponse;
+  }>('/admin/reset-user-stats', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminResetAllLeaderboard(payload: {
+  admin_id: number;
+}) {
+  return request<{
+    success: boolean;
+    message: string;
+    full_state: FullStateResponse;
+  }>('/admin/reset-all-ratings', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+

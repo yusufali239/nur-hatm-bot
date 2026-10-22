@@ -20,7 +20,7 @@ crons = ["* * * * *"]
 
 [vars]
 # Channel/Group username or ID for live board updates & completion Dua
-CHANNEL_ID = "@hatmiquaan"
+CHANNEL_ID = "@nurhatmquran"
 BOT_USERNAME = "nurHatmBot"
 # Super Admin Telegram User IDs (leave empty or set via wrangler secret / env)
 ADMIN_IDS = ""

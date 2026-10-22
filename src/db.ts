@@ -788,6 +788,76 @@ export async function adminResetHatm(
   return fullState.hatm;
 }
 
+export async function adminResetUserStats(
+  db: D1Database,
+  env: Env,
+  adminId: number,
+  targetUserId: number,
+  deleteUser: boolean = false
+): Promise<{ message: string; fullState: FullStateResponse }> {
+  await ensureInitialized(db, env);
+  const target = await db.prepare('SELECT * FROM users WHERE id = ?').bind(targetUserId).first<UserRow>();
+  if (!target) {
+    throw new Error('Фойдаланувчи топилмади');
+  }
+
+  // Release any currently booked juzs of that user
+  await db.prepare(`
+    UPDATE juzs
+    SET status = 'free', user_id = NULL, user_name = NULL, booked_at = NULL, expires_at = NULL, warning_sent = 0
+    WHERE user_id = ? AND status = 'booked'
+  `).bind(targetUserId).run();
+
+  await clearUserReminders(db, env, targetUserId);
+
+  if (deleteUser && target.is_admin === 0 && target.is_super_admin === 0) {
+    await db.prepare('DELETE FROM users WHERE id = ?').bind(targetUserId).run();
+  } else {
+    await db.prepare(`
+      UPDATE users
+      SET total_juz = 0, total_hatm = 0, rating_points = 0, expired_count = 0, updated_at = datetime('now')
+      WHERE id = ?
+    `).bind(targetUserId).run();
+  }
+
+  await syncChannelBoard(env);
+  const fullState = await getFullState(db, env, adminId);
+  return {
+    message: deleteUser
+      ? `🗑 ${target.name} (${target.id}) базадан ва Топдан бутунлай ўчирилди.`
+      : `✓ ${target.name} (${target.id})нинг барча баллари ва натижалари 0 қилинди.`,
+    fullState,
+  };
+}
+
+export async function adminResetAllLeaderboard(
+  db: D1Database,
+  env: Env,
+  adminId: number
+): Promise<{ message: string; fullState: FullStateResponse }> {
+  await ensureInitialized(db, env);
+
+  // Reset all users stats to 0
+  await db.prepare(`
+    UPDATE users
+    SET total_juz = 0, total_hatm = 0, rating_points = 0, expired_count = 0, updated_at = datetime('now')
+  `).run();
+
+  // Delete test users created during testing (e.g. name contains "Тест", "Test", etc. and not admin)
+  await db.prepare(`
+    DELETE FROM users
+    WHERE (LOWER(name) LIKE '%test%' OR LOWER(name) LIKE '%тест%')
+      AND is_admin = 0 AND is_super_admin = 0
+  `).run();
+
+  await syncChannelBoard(env);
+  const fullState = await getFullState(db, env, adminId);
+  return {
+    message: '✓ Барча фойдаланувчилар тест натижалари ва рейтинг баллари 0 қилинди!',
+    fullState,
+  };
+}
+
 export async function clearUserReminders(
   db: D1Database,
   env: Env,
