@@ -39,12 +39,12 @@ export function buildChannelHatmText(
     const num = String(j.number).padStart(2, '0');
     if (j.status === 'done') {
       const reader = j.user_name || 'Муслим';
-      lines.push(`✅ <b>${num}-пора:</b> ${reader} 🕋`);
+      lines.push(`<b>${num}-пора:</b> ${reader} ✅`);
     } else if (j.status === 'booked') {
       const reader = j.user_name || 'Муслим';
-      lines.push(`⏳ <b>${num}-пора:</b> ${reader}`);
+      lines.push(`<b>${num}-пора:</b> ${reader} ⏳`);
     } else {
-      lines.push(`⚪ <b>${num}-пора:</b> Бўш`);
+      lines.push(`<b>${num}-пора:</b>`);
     }
   }
   lines.push('');
