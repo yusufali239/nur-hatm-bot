@@ -13,7 +13,7 @@ export function getChannelId(env: Env): string {
 export function buildChannelHatmText(
   hatm: HatmRow,
   juzs: JuzRow[],
-  topUser: UserRow | null
+  topUsers: UserRow[] | UserRow | null
 ): string {
   const sorted = [...juzs].sort((a, b) => a.number - b.number);
   const doneCount = sorted.filter((j) => j.status === 'done').length;
@@ -49,8 +49,22 @@ export function buildChannelHatmText(
   }
   lines.push('');
 
-  if (topUser && topUser.total_juz > 0) {
-    lines.push(`🏆 Топ: ${topUser.name} — ${topUser.total_juz} пора`);
+  const topList: UserRow[] = Array.isArray(topUsers)
+    ? topUsers
+    : topUsers
+    ? [topUsers]
+    : [];
+
+  if (topList.length > 0) {
+    if (topList.length === 1) {
+      lines.push(`🏆 Топ: ${topList[0].name} — ${topList[0].total_juz} пора`);
+    } else {
+      lines.push('🏆 <b>Топ-3:</b>');
+      topList.slice(0, 3).forEach((u, i) => {
+        const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
+        lines.push(`${medal} ${u.name} — ${u.total_juz} пора`);
+      });
+    }
   }
 
   return lines.join('\n');
@@ -90,9 +104,12 @@ export async function syncChannelBoard(
     const juzsResult = await env.DB.prepare('SELECT * FROM juzs WHERE hatm_id = ? ORDER BY number ASC').bind(hatm.id).all<JuzRow>();
     const juzs = juzsResult.results || [];
 
-    const topUser = await env.DB.prepare('SELECT * FROM users WHERE total_juz > 0 ORDER BY rating_points DESC, total_juz DESC LIMIT 1').first<UserRow>();
+    const topUsersRes = await env.DB.prepare(
+      'SELECT * FROM users WHERE total_juz > 0 ORDER BY rating_points DESC, total_juz DESC LIMIT 3'
+    ).all<UserRow>();
+    const topUsers = topUsersRes.results || [];
 
-    const text = buildChannelHatmText(hatm, juzs, topUser);
+    const text = buildChannelHatmText(hatm, juzs, topUsers);
     const keyboard = buildChannelKeyboard(env, hatm.id);
 
     if (hatm.channel_message_id) {

@@ -338,6 +338,38 @@ export async function bookMultipleJuzs(
   const user = await getOrCreateUser(db, env, userId, userName, username);
   const { hatm } = await getActiveHatm(db, hatmId);
 
+  // Maximum active booked (unfinished) juzs per reader at a time = 2
+  const activeBookedRes = await db.prepare(
+    "SELECT COUNT(*) as cnt FROM juzs WHERE user_id = ? AND status = 'booked'"
+  ).bind(user.id).first<{ cnt: number }>();
+  const activeBooked = activeBookedRes?.cnt || 0;
+  const MAX_ACTIVE_JUZS = 2;
+  const availableSlots = Math.max(0, MAX_ACTIVE_JUZS - activeBooked);
+
+  if (availableSlots <= 0) {
+    throw new Error(
+      'Сизда аллақачон 2 та ўқилмаган пора мавжуд. Аввал уларни якунланг, сўнг яна 2 та олишингиз мумкин.'
+    );
+  }
+
+  const validNumbers = juzNumbers.filter((n) => n >= 1 && n <= 30);
+  if (validNumbers.length === 0) {
+    const fullState = await getFullState(db, env, user.id, hatm.id);
+    return {
+      booked: [],
+      conflict: [],
+      hatm: fullState.hatm,
+      user: fullState.user,
+      message: 'Ҳеч қандай пора танланмади',
+    };
+  }
+
+  if (validNumbers.length > availableSlots) {
+    throw new Error(
+      `Бир вақтнинг ўзида кўпи билан 2 та пора олиш мумкин. Сиз ҳозир яна ${availableSlots} та олишингиз мумкин.`
+    );
+  }
+
   const timerHours = hatm.timer_hours || 72;
   const now = new Date();
   const expires = new Date(now.getTime() + timerHours * 3600 * 1000);
@@ -347,8 +379,7 @@ export async function bookMultipleJuzs(
   const booked: number[] = [];
   const conflict: number[] = [];
 
-  for (const num of juzNumbers) {
-    if (num < 1 || num > 30) continue;
+  for (const num of validNumbers) {
     const res = await db.prepare(`
       UPDATE juzs
       SET status = 'booked',

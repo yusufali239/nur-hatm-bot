@@ -113,21 +113,48 @@ export const App: React.FC = () => {
     [hatm, identity.id]
   );
 
-  const toggleSelectJuz = useCallback((juzNumber: number) => {
-    setSelectedJuzs((prev) =>
-      prev.includes(juzNumber)
-        ? prev.filter((n) => n !== juzNumber)
-        : [...prev, juzNumber].sort((a, b) => a - b)
-    );
-  }, []);
+  const remainingSlots = Math.max(0, 2 - myBookedJuzs.length);
 
-  const handleSelectPreset = (count: number | 'all') => {
+  const toggleSelectJuz = useCallback(
+    (juzNumber: number) => {
+      setSelectedJuzs((prev) => {
+        if (prev.includes(juzNumber)) {
+          return prev.filter((n) => n !== juzNumber);
+        }
+        if (remainingSlots <= 0) {
+          showToast(
+            'Сизда аллақачон 2 та ўқилмаган пора мавжуд. Аввал уларни якунланг, сўнг яна 2 та олишингиз мумкин.',
+            'error'
+          );
+          triggerHaptic('warning');
+          return prev;
+        }
+        if (prev.length >= remainingSlots) {
+          showToast(
+            `Бир вақтнинг ўзида кўпи билан 2 та пора олиш мумкин (ҳозир яна ${remainingSlots} та олиш мумкин).`,
+            'error'
+          );
+          triggerHaptic('warning');
+          return prev;
+        }
+        triggerHaptic('selection');
+        return [...prev, juzNumber].sort((a, b) => a - b);
+      });
+    },
+    [remainingSlots, showToast]
+  );
+
+  const handleSelectPreset = (count: number) => {
     triggerHaptic('selection');
-    if (count === 'all') {
-      setSelectedJuzs(freeJuzNumbers);
+    if (remainingSlots <= 0) {
+      showToast(
+        'Сизда аллақачон 2 та ўқилмаган пора мавжуд. Аввал уларни якунланг.',
+        'error'
+      );
       return;
     }
-    setSelectedJuzs(freeJuzNumbers.slice(0, count));
+    const targetCount = Math.min(count, remainingSlots);
+    setSelectedJuzs(freeJuzNumbers.slice(0, targetCount));
   };
 
   const handleBookSelected = async () => {
@@ -362,6 +389,11 @@ export const App: React.FC = () => {
             <div className="flex flex-col gap-0.5 min-w-0">
               <div className="text-xs font-bold text-emerald-100 flex items-center gap-1.5">
                 <span>Сизда {myBookedJuzs.length} та пора ({myBookedJuzs.map((j) => j.number).join(', ')})</span>
+                {myBookedJuzs.length >= 2 && (
+                  <span className="px-1.5 py-0.2 rounded-md bg-amber-400/20 text-amber-200 border border-amber-300/30 text-[9px] font-semibold">
+                    Лимит тўлган (2/2)
+                  </span>
+                )}
               </div>
               <div className="flex items-center gap-1.5">
                 {/* Single unified countdown pill */}
@@ -484,29 +516,25 @@ export const App: React.FC = () => {
                   ))}
                 </div>
 
-                {/* Quick Multi-Select Presets (1, 5, 10, All 30!) */}
-                {freeJuzNumbers.length > 0 && (
+                {/* Quick Multi-Select Presets (1, 2) */}
+                {freeJuzNumbers.length > 0 && remainingSlots > 0 && (
                   <div className="flex items-center gap-1">
-                    {[1, 5, 10].map(
-                      (cnt) =>
-                        freeJuzNumbers.length >= cnt && (
-                          <button
-                            key={cnt}
-                            type="button"
-                            onClick={() => handleSelectPreset(cnt)}
-                            className="px-2 py-0.5 rounded-lg bg-sky-400/15 border border-sky-300/30 text-sky-200 text-[10px] font-bold hover:bg-sky-400/25"
-                          >
-                            +{cnt}
-                          </button>
-                        )
-                    )}
                     <button
                       type="button"
-                      onClick={() => handleSelectPreset('all')}
-                      className="px-2 py-0.5 rounded-lg bg-amber-400/15 border border-amber-300/30 text-amber-200 text-[10px] font-bold hover:bg-amber-400/25"
+                      onClick={() => handleSelectPreset(1)}
+                      className="px-2 py-0.5 rounded-lg bg-sky-400/15 border border-sky-300/30 text-sky-200 text-[10px] font-bold hover:bg-sky-400/25"
                     >
-                      Ҳаммаси ({freeJuzNumbers.length})
+                      +1
                     </button>
+                    {freeJuzNumbers.length >= 2 && remainingSlots >= 2 && (
+                      <button
+                        type="button"
+                        onClick={() => handleSelectPreset(2)}
+                        className="px-2 py-0.5 rounded-lg bg-sky-400/15 border border-sky-300/30 text-sky-200 text-[10px] font-bold hover:bg-sky-400/25"
+                      >
+                        +2 (макс)
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -700,7 +728,7 @@ export const App: React.FC = () => {
             <div className="juz-glass-selected p-3.5 backdrop-blur-2xl flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-xs font-extrabold text-white">
-                  Танланди: {selectedJuzs.length} та пора (лимитсиз)
+                  Танланди: {selectedJuzs.length}/2 пора (макс 2 та)
                 </div>
                 <div className="text-[10px] text-sky-100/80 truncate">
                   {selectedJuzs.map((n) => `${n}-пора`).join(', ')}

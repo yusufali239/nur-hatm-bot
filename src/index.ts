@@ -59,24 +59,34 @@ app.get('/api/state', async (c) => {
 // ==========================================
 
 app.post('/api/juz/book', async (c) => {
-  const body = await c.req.json<any>();
-  const res = await bookMultipleJuzs(
-    c.env.DB,
-    c.env,
-    body.user_id,
-    body.user_name || 'Муслим',
-    body.username,
-    body.hatm_id,
-    body.juz_numbers || []
-  );
-  return c.json({
-    success: true,
-    booked: res.booked,
-    conflict: res.conflict,
-    message: res.message,
-    hatm: res.hatm,
-    user: res.user,
-  });
+  try {
+    const body = await c.req.json<any>();
+    const res = await bookMultipleJuzs(
+      c.env.DB,
+      c.env,
+      body.user_id,
+      body.user_name || 'Муслим',
+      body.username,
+      body.hatm_id,
+      body.juz_numbers || []
+    );
+    return c.json({
+      success: true,
+      booked: res.booked,
+      conflict: res.conflict,
+      message: res.message,
+      hatm: res.hatm,
+      user: res.user,
+    });
+  } catch (err: any) {
+    return c.json(
+      {
+        success: false,
+        message: err.message || 'Банд қилишда хатолик',
+      },
+      400
+    );
+  }
 });
 app.post('/api/book', (c) => c.redirect('/api/juz/book', 307));
 
