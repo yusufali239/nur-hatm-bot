@@ -1,9 +1,11 @@
 import { Env, HatmRow, JuzRow, UserRow } from './types';
 import { getBotToken, sendMessage, editMessageText, deleteMessage, answerCallbackQuery } from './telegram';
 import { getOrCreateUser, getActiveHatm, getLeaderboard, isAdminUser, adminPerformDua, ensureInitialized, adminResetUserStats, adminResetAllLeaderboard } from './db';
+import { getChannelUrl } from './channel';
 
 export function getMainKeyboard(env: Env, webappUrl: string, isAdmin: boolean): any {
   const url = webappUrl || 'https://nur-hatm-bot.vercel.app';
+  const channelUrl = getChannelUrl(env);
   const buttons: any[] = [
     [
       {
@@ -19,6 +21,12 @@ export function getMainKeyboard(env: Env, webappUrl: string, isAdmin: boolean): 
       {
         text: '⏳ Пораларим',
         callback_data: 'my_juzs',
+      },
+    ],
+    [
+      {
+        text: '📢 Каналимиз (@nurhatmquran)',
+        url: channelUrl,
       },
     ],
   ];
@@ -102,7 +110,10 @@ export async function handleTelegramWebhook(
       const kb = {
         inline_keyboard: [
           [{ text: '📖 Пора олиш', web_app: { url: webappUrl } }],
-          [{ text: '◀️ Ортга', callback_data: 'back_to_main' }],
+          [
+            { text: '📢 Каналга ўтиш', url: getChannelUrl(env) },
+            { text: '◀️ Ортга', callback_data: 'back_to_main' },
+          ],
         ],
       };
 
@@ -127,7 +138,10 @@ export async function handleTelegramWebhook(
       const kb = {
         inline_keyboard: [
           [{ text: '📖 Иловани очиш', web_app: { url: webappUrl } }],
-          [{ text: '◀️ Ортга', callback_data: 'back_to_main' }],
+          [
+            { text: '📢 Каналга ўтиш', url: getChannelUrl(env) },
+            { text: '◀️ Ортга', callback_data: 'back_to_main' },
+          ],
         ],
       };
 

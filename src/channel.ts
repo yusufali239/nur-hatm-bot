@@ -5,6 +5,17 @@ export function getChannelId(env: Env): string {
   return (env.CHANNEL_ID || '@nurhatmquran').trim();
 }
 
+export function getChannelUrl(env: Env): string {
+  const ch = getChannelId(env);
+  if (ch.startsWith('@')) {
+    return `https://t.me/${ch.slice(1)}`;
+  }
+  if (ch.startsWith('https://t.me/')) {
+    return ch;
+  }
+  return 'https://t.me/nurhatmquran';
+}
+
 /**
  * Requirement 7:
  * editMessageText in channel @hatmiquaan formatted as:

@@ -7,6 +7,7 @@ import {
   Flame,
   Layers,
   RefreshCw,
+  Send,
   Share2,
   Shield,
   Sparkles,
@@ -330,6 +331,15 @@ export const App: React.FC = () => {
               <span className="tabular-nums">{user?.rating_points ?? 0}</span>
               <span className="text-[10px] opacity-80">балл</span>
             </button>
+            <a
+              href="https://t.me/nurhatmquran"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="p-2 rounded-2xl bg-white/5 border border-white/10 text-sky-300 hover:text-white active:scale-90 transition-all flex items-center justify-center"
+              title="Каналимиз (@nurhatmquran)"
+            >
+              <Send className="w-4 h-4" />
+            </a>
             <button
               type="button"
               onClick={() => {
