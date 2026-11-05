@@ -39,12 +39,12 @@ export function buildChannelHatmText(
     const num = String(j.number).padStart(2, '0');
     if (j.status === 'done') {
       const reader = j.user_name || 'Муслим';
-      lines.push(`<b>${num}-пора:</b> ${reader} ✅`);
+      lines.push(`\u200E<b>${num}-пора:</b> \u2068${reader}\u2069\u200E ✅`);
     } else if (j.status === 'booked') {
       const reader = j.user_name || 'Муслим';
-      lines.push(`<b>${num}-пора:</b> ${reader} ⏳`);
+      lines.push(`\u200E<b>${num}-пора:</b> \u2068${reader}\u2069\u200E ⏳`);
     } else {
-      lines.push(`<b>${num}-пора:</b>`);
+      lines.push(`\u200E<b>${num}-пора:</b>`);
     }
   }
   lines.push('');
@@ -57,12 +57,12 @@ export function buildChannelHatmText(
 
   if (topList.length > 0) {
     if (topList.length === 1) {
-      lines.push(`🏆 Топ: ${topList[0].name} — ${topList[0].total_juz} пора`);
+      lines.push(`\u200E🏆 <b>Топ:</b> \u2068${topList[0].name}\u2069\u200E — ${topList[0].total_juz} пора`);
     } else {
-      lines.push('🏆 <b>Топ-3:</b>');
+      lines.push('\u200E🏆 <b>Топ-3:</b>');
       topList.slice(0, 3).forEach((u, i) => {
         const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
-        lines.push(`${medal} ${u.name} — ${u.total_juz} пора`);
+        lines.push(`\u200E${medal} \u2068${u.name}\u2069\u200E — ${u.total_juz} пора`);
       });
     }
   }
@@ -177,7 +177,8 @@ export async function sendGroupDua(
     `<i>«${duaText}»</i>\n`,
   ];
   if (readers.length > 0) {
-    let readersStr = readers.slice(0, 15).join(', ');
+    const formattedReaders = readers.slice(0, 15).map((r) => `\u2068${r}\u2069\u200E`);
+    let readersStr = formattedReaders.join(', ');
     if (readers.length > 15) {
       readersStr += ` ва яна ${readers.length - 15} киши`;
     }

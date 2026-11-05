@@ -132,9 +132,9 @@ export const JuzCard: React.FC<JuzCardProps> = ({
 
         {isBooked && (
           <div className="flex flex-col gap-1">
-            <span className="text-[11px] font-semibold text-emerald-200 truncate">
+            <bdi className="text-[11px] font-semibold text-emerald-200 truncate" dir="auto">
               {juz.user_name || 'Муслим'}
-            </span>
+            </bdi>
 
             {isMine && (
               <button
@@ -153,9 +153,9 @@ export const JuzCard: React.FC<JuzCardProps> = ({
         )}
 
         {isDone && (
-          <span className="text-[11px] font-semibold text-amber-200 truncate">
+          <bdi className="text-[11px] font-semibold text-amber-200 truncate" dir="auto">
             {juz.user_name || 'Ўқилди'}
-          </span>
+          </bdi>
         )}
       </div>
     </motion.div>

@@ -217,9 +217,9 @@ export const RatingBoard: React.FC<RatingBoardProps> = ({
                 {/* User Details */}
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-sm text-white truncate">
+                    <bdi className="font-bold text-sm text-white truncate" dir="auto">
                       {u.name}
-                    </span>
+                    </bdi>
                     {isMe && (
                       <span className="px-1.5 py-0.5 rounded-md bg-sky-400/25 border border-sky-300/40 text-sky-200 text-[10px] font-semibold">
                         Сиз

@@ -92,7 +92,7 @@ export async function handleTelegramWebhook(
       const medals: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
       for (const u of lb.top_users) {
         const m = medals[u.rank] || `<b>${u.rank}.</b>`;
-        lines.push(`${m} <b>${u.name}</b> — ${u.total_juz} пора • <b>${u.rating_points} балл</b>`);
+        lines.push(`\u200E${m} <b>\u2068${u.name}\u2069</b>\u200E — ${u.total_juz} пора • <b>${u.rating_points} балл</b>`);
       }
       if (lb.top_users.length === 0) {
         lines.push('Ҳозирча ўқилган поралар йўқ. Биринчи бўлиб савоб олинг!');
@@ -119,7 +119,7 @@ export async function handleTelegramWebhook(
       const doneStr = myDone.length > 0 ? myDone.map((j) => `${j.number}-пора`).join(', ') : 'Йўқ';
 
       const text =
-        `👤 <b>${user.name}</b>\n\n` +
+        `👤 <b>\u2068${user.name}\u2069</b>\u200E\n\n` +
         `🌟 <b>${user.rating_points} балл</b> • ${user.total_juz} пора (${user.total_hatm} хатм)\n\n` +
         `⏳ <b>Банд:</b> ${bookedStr}\n` +
         `✅ <b>Ўқилди:</b> ${doneStr}`;
@@ -285,7 +285,7 @@ export async function handleTelegramWebhook(
       const lines = ['👑 <b>Админлар рўйхати:</b>\n'];
       for (const a of list) {
         const badge = a.is_super_admin === 1 ? '🌟 Super Admin' : '🛡 Admin';
-        lines.push(`• <b>${a.name}</b> (<code>${a.id}</code>) — ${badge}`);
+        lines.push(`• <b>\u2068${a.name}\u2069</b>\u200E (<code>${a.id}</code>) — ${badge}`);
       }
       lines.push('\n<i>Қўшиш: /admins add [ID] [Исм]\nЎчириш: /admins remove [ID]</i>');
       await sendMessage(token, chatId, lines.join('\n'));
