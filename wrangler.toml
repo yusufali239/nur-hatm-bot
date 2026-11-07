@@ -32,3 +32,5 @@ POINTS_ON_COMPLETE = "10"
 POINTS_ON_EXPIRE_PENALTY = "5"
 # Public URL of the Mini App (Leave empty to auto-detect Worker domain)
 WEBAPP_URL = ""
+# Telegram Mini App Short Name (e.g. from @BotFather /newapp). If set, channel button opens Mini App directly!
+MINI_APP_NAME = ""

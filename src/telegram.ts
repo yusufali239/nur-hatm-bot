@@ -7,6 +7,15 @@ export function getBotToken(env: Env): string {
 
 export function botLink(env: Env, hatmId?: number): string {
   const uname = (env.BOT_USERNAME || 'nurHatmBot').trim().replace(/^@/, '');
+  const appName = (env.MINI_APP_NAME || '').trim().replace(/^@/, '');
+  if (appName) {
+    let link = `https://t.me/${uname}/${appName}`;
+    if (hatmId) {
+      link += `?startapp=hatm_${hatmId}`;
+    }
+    return link;
+  }
+
   let link = `https://t.me/${uname}`;
   if (hatmId) {
     link += `?start=hatm_${hatmId}`;

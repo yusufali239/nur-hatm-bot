@@ -238,9 +238,8 @@ export async function handleTelegramWebhook(
         ctx.waitUntil(deleteMessage(token, chatId, parseInt(prevMsg.value, 10)));
       }
 
-      if (!isPrivate) {
-        ctx.waitUntil(deleteMessage(token, chatId, msg.message_id));
-      }
+      // Clean up user's incoming /start message immediately in all chats (private and groups)
+      ctx.waitUntil(deleteMessage(token, chatId, msg.message_id));
 
       const welcome = formatWelcomeText(user, hatm, juzs);
       const kb = getMainKeyboard(env, webappUrl, isAdmin);
@@ -357,9 +356,7 @@ export async function handleTelegramWebhook(
         (async () => {
           await new Promise((resolve) => setTimeout(resolve, 4000));
           await deleteMessage(token, chatId, tipId);
-          if (!isPrivate) {
-            await deleteMessage(token, chatId, userMsgId);
-          }
+          await deleteMessage(token, chatId, userMsgId);
         })()
       );
     }

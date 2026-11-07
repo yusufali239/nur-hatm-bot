@@ -9,6 +9,7 @@ export interface Env {
   POINTS_ON_COMPLETE?: string;
   POINTS_ON_EXPIRE_PENALTY?: string;
   WEBAPP_URL?: string;
+  MINI_APP_NAME?: string;
 }
 
 export interface UserRow {
