@@ -18,10 +18,14 @@ export function isAdminUser(env: Env, user: UserRow | null): boolean {
   return list.includes(user.id);
 }
 
+let isInitialized = false;
+
 /**
  * Initializes database tables & seeds 2599-Хатм if not initialized yet
  */
 export async function ensureInitialized(db: D1Database, env: Env): Promise<void> {
+  if (isInitialized) return;
+
   const check = await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='hatms'").first();
   if (!check) {
     // Run schema
@@ -108,22 +112,17 @@ export async function ensureInitialized(db: D1Database, env: Env): Promise<void>
     await db.batch(batch);
   }
 
-  // Ensure solo_hatms table exists
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS solo_hatms (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        user_name TEXT NOT NULL,
-        user_username TEXT,
-        status TEXT NOT NULL DEFAULT 'pending',
-        channel_message_id INTEGER,
-        approved_by_admin_id INTEGER,
-        created_at TEXT NOT NULL DEFAULT (datetime('now')),
-        approved_at TEXT
-    );
-    CREATE INDEX IF NOT EXISTS idx_solo_hatms_user_id ON solo_hatms(user_id);
-    CREATE INDEX IF NOT EXISTS idx_solo_hatms_status ON solo_hatms(status);
-  `);
+  // Ensure solo_hatms table exists safely
+  try {
+    const soloCheck = await db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='solo_hatms'").first();
+    if (!soloCheck) {
+      await db.prepare("CREATE TABLE IF NOT EXISTS solo_hatms (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, user_name TEXT NOT NULL, user_username TEXT, status TEXT NOT NULL DEFAULT 'pending', channel_message_id INTEGER, approved_by_admin_id INTEGER, created_at TEXT NOT NULL DEFAULT (datetime('now')), approved_at TEXT)").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_solo_hatms_user_id ON solo_hatms(user_id)").run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_solo_hatms_status ON solo_hatms(status)").run();
+    }
+  } catch (err: any) {
+    console.error('ensureInitialized solo_hatms error:', err);
+  }
 
   // Clean up legacy test/dummy admin IDs (123456789, 1234567)
   await db.prepare('DELETE FROM users WHERE id IN (123456789, 1234567)').run();
@@ -137,6 +136,8 @@ export async function ensureInitialized(db: D1Database, env: Env): Promise<void>
       ON CONFLICT(id) DO UPDATE SET is_admin = 1, is_super_admin = 1
     `).bind(aid).run();
   }
+
+  isInitialized = true;
 }
 
 export async function getOrCreateUser(
