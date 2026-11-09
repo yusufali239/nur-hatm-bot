@@ -57,6 +57,18 @@ export interface JuzRow {
   warning_sent: number;
 }
 
+export interface SoloHatmRow {
+  id: number;
+  user_id: number;
+  user_name: string;
+  user_username: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  channel_message_id: number | null;
+  approved_by_admin_id: number | null;
+  created_at: string;
+  approved_at: string | null;
+}
+
 export interface LeaderboardEntry {
   rank: number;
   id: number;

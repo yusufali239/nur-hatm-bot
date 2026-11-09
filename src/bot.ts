@@ -1,6 +1,19 @@
 import { Env, HatmRow, JuzRow, UserRow } from './types';
 import { getBotToken, sendMessage, editMessageText, deleteMessage, answerCallbackQuery } from './telegram';
-import { getOrCreateUser, getActiveHatm, getLeaderboard, isAdminUser, adminPerformDua, ensureInitialized, adminResetUserStats, adminResetAllLeaderboard } from './db';
+import {
+  getOrCreateUser,
+  getActiveHatm,
+  getLeaderboard,
+  isAdminUser,
+  adminPerformDua,
+  ensureInitialized,
+  adminResetUserStats,
+  adminResetAllLeaderboard,
+  getAllAdminIds,
+  createSoloHatmRequest,
+  approveSoloHatm,
+  rejectSoloHatm,
+} from './db';
 import { getChannelUrl } from './channel';
 
 export function getMainKeyboard(env: Env, webappUrl: string, isAdmin: boolean): any {
@@ -21,6 +34,12 @@ export function getMainKeyboard(env: Env, webappUrl: string, isAdmin: boolean): 
       {
         text: '⏳ Пораларим',
         callback_data: 'my_juzs',
+      },
+    ],
+    [
+      {
+        text: '🌙 Тўлиқ хатм қилдим',
+        callback_data: 'solo_hatm_prompt',
       },
     ],
     [
@@ -195,6 +214,161 @@ export async function handleTelegramWebhook(
       const kb = getMainKeyboard(env, webappUrl, true);
       await editMessageText(token, msg.chat.id, msg.message_id, text, kb);
       await answerCallbackQuery(token, cb.id, '🤲 Дуо гуруҳга юборилди!');
+      return new Response('ok');
+    }
+
+    // 1e. Solo Khatm (User claims full 30-juz Khatm)
+    if (data === 'solo_hatm_prompt') {
+      const text =
+        `🌙 <b>Тўлиқ Хатми Қуръонни тасдиқлаш</b>\n\n` +
+        `Сиз Қуръони Каримнинг 30 та порасини тўлиқ ўзингиз мустақил ўқиб тамомладингизми?\n\n` +
+        `<i>Тасдиқласангиз, аризангиз админларга юборилади. Админ тасдиқлагач, гуруҳга 30 та поралик шахсий хатмингиз эълон қилинади ҳамда ҳисобингизга <b>+300 савоб балл (+1 хатм)</b> қўшилади.</i>`;
+
+      const kb = {
+        inline_keyboard: [
+          [{ text: '✅ Ҳа, тўлиқ ўқиб тамомладим', callback_data: 'solo_hatm_confirm' }],
+          [{ text: '◀️ Бекор қилиш', callback_data: 'back_to_main' }],
+        ],
+      };
+
+      await editMessageText(token, msg.chat.id, msg.message_id, text, kb);
+      await answerCallbackQuery(token, cb.id);
+      return new Response('ok');
+    }
+
+    if (data === 'solo_hatm_confirm') {
+      const res = await createSoloHatmRequest(env.DB, user.id, user.name, user.username);
+      if (!res.success) {
+        if (res.reason === 'pending_exists') {
+          await answerCallbackQuery(token, cb.id, 'Сизда аллақачон кўриб чиқилаётган ариза мавжуд!', true);
+          return new Response('ok');
+        }
+        await answerCallbackQuery(token, cb.id, 'Хатолик юз берди', true);
+        return new Response('ok');
+      }
+
+      const solo = res.soloHatm!;
+      const text =
+        `✅ <b>Аризангиз қабул қилинди!</b>\n\n` +
+        `⏳ <b>Илтимос, админ тасдиқлашини кутинг.</b>\n\n` +
+        `Админ текшириб тасдиқлаганидан сўнг сизга бу ҳақда хабар юборилади, савоб балларингиз (+300 балл, +1 хатм) ҳисобланади ҳамда 30 поралик шахсий хатмингиз гуруҳга эълон қилинади.`;
+
+      const kb = {
+        inline_keyboard: [
+          [{ text: '◀️ Бош меню', callback_data: 'back_to_main' }],
+        ],
+      };
+
+      await editMessageText(token, msg.chat.id, msg.message_id, text, kb);
+      await answerCallbackQuery(token, cb.id, 'Аризангиз юборилди!');
+
+      // Send alert to all admins
+      const adminIds = await getAllAdminIds(env.DB, env);
+      const adminText =
+        `🌙 <b>Янги Шахсий Хатм аризаси!</b>\n\n` +
+        `👤 <b>Қори:</b> \u2068${user.name}\u2069\u200E ${user.username ? '(@' + user.username + ')' : ''}\n` +
+        `🆔 <b>ID:</b> <code>${user.id}</code>\n` +
+        `📊 <b>Ҳолати:</b> ${user.total_hatm} хатм • ${user.total_juz} пора (${user.rating_points} балл)\n\n` +
+        `<i>Қори Қуръоннинг 30 порасини мустақил тўлиқ ўқиб тамомлаганини билдирди. Ушбу шахсий хатмни тасдиқлайсизми?</i>`;
+
+      const adminKb = {
+        inline_keyboard: [
+          [{ text: '✅ Тасдиқлаш (Гуруҳга чиқариш)', callback_data: `solo_approve_${solo.id}` }],
+          [{ text: '❌ Рад этиш', callback_data: `solo_reject_${solo.id}` }],
+        ],
+      };
+
+      for (const aid of adminIds) {
+        ctx.waitUntil(sendMessage(token, aid, adminText, adminKb));
+      }
+
+      return new Response('ok');
+    }
+
+    if (data.startsWith('solo_approve_')) {
+      if (!isAdmin) {
+        await answerCallbackQuery(token, cb.id, 'Фақат админлар учун!', true);
+        return new Response('ok');
+      }
+      const soloId = parseInt(data.replace('solo_approve_', ''), 10);
+      if (isNaN(soloId)) {
+        await answerCallbackQuery(token, cb.id, 'Нотўғри ID', true);
+        return new Response('ok');
+      }
+
+      const res = await approveSoloHatm(env.DB, env, soloId, user.id);
+      if (!res.success) {
+        if (res.reason === 'already_processed') {
+          await answerCallbackQuery(token, cb.id, 'Ушбу ариза аллақачон кўриб чиқилган!', true);
+          return new Response('ok');
+        }
+        await answerCallbackQuery(token, cb.id, 'Хатолик: ' + (res.reason || ''), true);
+        return new Response('ok');
+      }
+
+      const solo = res.soloHatm!;
+      const text =
+        `✅ <b>Шахсий Хатм тасдиқланди ва гуруҳга чиқарилди!</b>\n\n` +
+        `👤 <b>Қори:</b> \u2068${solo.user_name}\u2069\u200E\n` +
+        `🛡 <b>Тасдиқлади:</b> \u2068${user.name}\u2069\u200E`;
+
+      await editMessageText(token, msg.chat.id, msg.message_id, text);
+      await answerCallbackQuery(token, cb.id, 'Шахсий хатм тасдиқланди ва чиқарилди!');
+
+      // Notify the reader in private chat
+      const userText =
+        `🎉 <b>Табриклаймиз!</b>\n\n` +
+        `Сизнинг 30 поралик шахсий хатмингиз админ томонидан тасдиқланди ва гуруҳга эълон қилинди!\n\n` +
+        `🌟 Ҳисобингизга <b>+300 савоб балл</b> ҳамда <b>+1 хатм</b> қўшилди!\n\n` +
+        `🤲 <i>Аллоҳ таоло ўқилган хатмни даргоҳида ҳусни қабул айласин!</i>`;
+
+      const userKb = {
+        inline_keyboard: [
+          [{ text: '📢 Гуруҳда кўриш', url: getChannelUrl(env) }],
+          [{ text: '📖 Иловани очиш', web_app: { url: webappUrl } }],
+        ],
+      };
+      ctx.waitUntil(sendMessage(token, solo.user_id, userText, userKb));
+
+      return new Response('ok');
+    }
+
+    if (data.startsWith('solo_reject_')) {
+      if (!isAdmin) {
+        await answerCallbackQuery(token, cb.id, 'Фақат админлар учун!', true);
+        return new Response('ok');
+      }
+      const soloId = parseInt(data.replace('solo_reject_', ''), 10);
+      if (isNaN(soloId)) {
+        await answerCallbackQuery(token, cb.id, 'Нотўғри ID', true);
+        return new Response('ok');
+      }
+
+      const res = await rejectSoloHatm(env.DB, soloId, user.id);
+      if (!res.success) {
+        if (res.reason === 'already_processed') {
+          await answerCallbackQuery(token, cb.id, 'Ушбу ариза аллақачон кўриб чиқилган!', true);
+          return new Response('ok');
+        }
+        await answerCallbackQuery(token, cb.id, 'Хатолик юз берди', true);
+        return new Response('ok');
+      }
+
+      const solo = res.soloHatm!;
+      const text =
+        `❌ <b>Шахсий Хатм аризаси рад этилди.</b>\n\n` +
+        `👤 <b>Қори:</b> \u2068${solo.user_name}\u2069\u200E\n` +
+        `🛡 <b>Рад этди:</b> \u2068${user.name}\u2069\u200E`;
+
+      await editMessageText(token, msg.chat.id, msg.message_id, text);
+      await answerCallbackQuery(token, cb.id, 'Ариза рад этилди.');
+
+      // Notify the reader
+      const userText =
+        `ℹ️ <b>Шахсий хатм аризангиз бўйича:</b>\n\n` +
+        `Сиз юборган тўлиқ хатм аризаси админ томонидан рад этилди.`;
+      ctx.waitUntil(sendMessage(token, solo.user_id, userText));
+
       return new Response('ok');
     }
 

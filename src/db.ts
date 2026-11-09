@@ -1,5 +1,5 @@
-import { Env, HatmRow, JuzRow, UserRow, FullStateResponse, LeaderboardData } from './types';
-import { syncChannelBoard, deleteChannelPost, sendGroupDua } from './channel';
+import { Env, HatmRow, JuzRow, UserRow, SoloHatmRow, FullStateResponse, LeaderboardData } from './types';
+import { syncChannelBoard, deleteChannelPost, sendGroupDua, sendSoloHatmToChannel } from './channel';
 import { sendMessage, deleteMessage, getBotToken } from './telegram';
 
 export function getAdminIds(env: Env): number[] {
@@ -107,6 +107,23 @@ export async function ensureInitialized(db: D1Database, env: Env): Promise<void>
     }
     await db.batch(batch);
   }
+
+  // Ensure solo_hatms table exists
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS solo_hatms (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        user_name TEXT NOT NULL,
+        user_username TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        channel_message_id INTEGER,
+        approved_by_admin_id INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        approved_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_solo_hatms_user_id ON solo_hatms(user_id);
+    CREATE INDEX IF NOT EXISTS idx_solo_hatms_status ON solo_hatms(status);
+  `);
 
   // Clean up legacy test/dummy admin IDs (123456789, 1234567)
   await db.prepare('DELETE FROM users WHERE id IN (123456789, 1234567)').run();
@@ -1001,4 +1018,128 @@ async function checkWarnings(db: D1Database, env: Env, token: string): Promise<v
       }
     }
   }
+}
+
+export async function getAllAdminIds(db: D1Database, env: Env): Promise<number[]> {
+  const envAdmins = getAdminIds(env);
+  const dbAdminsRes = await db.prepare(
+    'SELECT id FROM users WHERE (is_admin = 1 OR is_super_admin = 1) AND id NOT IN (123456789, 1234567)'
+  ).all<{ id: number }>();
+  const dbAdmins = (dbAdminsRes.results || []).map((r) => r.id);
+  const set = new Set<number>([...envAdmins, ...dbAdmins]);
+  return Array.from(set);
+}
+
+export async function createSoloHatmRequest(
+  db: D1Database,
+  userId: number,
+  userName: string,
+  userUsername?: string | null
+): Promise<{ success: boolean; soloHatm?: SoloHatmRow; reason?: string }> {
+  // Check if a pending application already exists
+  const existing = await db.prepare(
+    "SELECT * FROM solo_hatms WHERE user_id = ? AND status = 'pending' LIMIT 1"
+  ).bind(userId).first<SoloHatmRow>();
+
+  if (existing) {
+    return { success: false, reason: 'pending_exists', soloHatm: existing };
+  }
+
+  const res = await db.prepare(`
+    INSERT INTO solo_hatms (user_id, user_name, user_username, status, created_at)
+    VALUES (?, ?, ?, 'pending', datetime('now'))
+  `).bind(userId, userName, userUsername || null).run();
+
+  const id = res.meta.last_row_id;
+  const created = await db.prepare('SELECT * FROM solo_hatms WHERE id = ?').bind(id).first<SoloHatmRow>();
+  return { success: true, soloHatm: created || undefined };
+}
+
+export async function approveSoloHatm(
+  db: D1Database,
+  env: Env,
+  soloId: number,
+  adminId: number
+): Promise<{ success: boolean; reason?: string; soloHatm?: SoloHatmRow; user?: UserRow }> {
+  await ensureInitialized(db, env);
+  const solo = await db.prepare('SELECT * FROM solo_hatms WHERE id = ?').bind(soloId).first<SoloHatmRow>();
+  if (!solo) {
+    return { success: false, reason: 'not_found' };
+  }
+  if (solo.status !== 'pending') {
+    return { success: false, reason: 'already_processed', soloHatm: solo };
+  }
+
+  const user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(solo.user_id).first<UserRow>();
+  if (!user) {
+    return { success: false, reason: 'user_not_found' };
+  }
+
+  // Award points: 30 juz * points_on_complete (default 10 = 300) + 1 total_hatm
+  const ptsPerJuz = parseInt(env.POINTS_ON_COMPLETE || '10', 10) || 10;
+  const pointsDelta = 30 * ptsPerJuz;
+
+  await db.prepare(`
+    UPDATE users
+    SET total_juz = total_juz + 30,
+        total_hatm = total_hatm + 1,
+        rating_points = rating_points + ?,
+        updated_at = datetime('now')
+    WHERE id = ?
+  `).bind(pointsDelta, user.id).run();
+
+  // Send 30-juz solo khatm board to channel
+  const channelMsgId = await sendSoloHatmToChannel(env, user.name);
+
+  // Update solo_hatms status
+  const nowIso = new Date().toISOString();
+  await db.prepare(`
+    UPDATE solo_hatms
+    SET status = 'approved',
+        channel_message_id = ?,
+        approved_by_admin_id = ?,
+        approved_at = ?
+    WHERE id = ?
+  `).bind(channelMsgId, adminId, nowIso, solo.id).run();
+
+  const updatedSolo = await db.prepare('SELECT * FROM solo_hatms WHERE id = ?').bind(solo.id).first<SoloHatmRow>();
+  const updatedUser = await db.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first<UserRow>();
+
+  return {
+    success: true,
+    soloHatm: updatedSolo || solo,
+    user: updatedUser || user,
+  };
+}
+
+export async function rejectSoloHatm(
+  db: D1Database,
+  soloId: number,
+  adminId: number
+): Promise<{ success: boolean; reason?: string; soloHatm?: SoloHatmRow; user?: UserRow }> {
+  const solo = await db.prepare('SELECT * FROM solo_hatms WHERE id = ?').bind(soloId).first<SoloHatmRow>();
+  if (!solo) {
+    return { success: false, reason: 'not_found' };
+  }
+  if (solo.status !== 'pending') {
+    return { success: false, reason: 'already_processed', soloHatm: solo };
+  }
+
+  const user = await db.prepare('SELECT * FROM users WHERE id = ?').bind(solo.user_id).first<UserRow>();
+  const nowIso = new Date().toISOString();
+
+  await db.prepare(`
+    UPDATE solo_hatms
+    SET status = 'rejected',
+        approved_by_admin_id = ?,
+        approved_at = ?
+    WHERE id = ?
+  `).bind(adminId, nowIso, solo.id).run();
+
+  const updatedSolo = await db.prepare('SELECT * FROM solo_hatms WHERE id = ?').bind(solo.id).first<SoloHatmRow>();
+  return {
+    success: true,
+    soloHatm: updatedSolo || solo,
+    user: user || undefined,
+  };
 }

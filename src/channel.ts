@@ -216,3 +216,49 @@ export async function sendGroupDua(
     console.error('sendGroupDua error:', err);
   }
 }
+
+export async function sendSoloHatmToChannel(
+  env: Env,
+  userName: string
+): Promise<number | null> {
+  const token = getBotToken(env);
+  const channelId = getChannelId(env);
+  if (!token || !channelId) return null;
+
+  const lrm = '\u200E';
+  const lines: string[] = [
+    `🌙 <b>Шахсий Хатми Қуръон</b>`,
+    `<i>«Барча мўмин-мусулмонлар ҳаққига бағишланади»</i>\n`,
+    `👤 <b>Қори:</b> \u2068${userName}\u2069${lrm}`,
+    `📊 <b>30/30 ўқилди</b> (Тўлиқ хатм)`,
+    `<code>[🟨🟨🟨🟨🟨🟨🟨🟨🟨🟨]</code>\n`,
+  ];
+
+  for (let i = 1; i <= 30; i++) {
+    const num = String(i).padStart(2, '0');
+    lines.push(`${lrm}<b>${num}-пора:</b> \u2068${userName}\u2069${lrm} ✅`);
+  }
+
+  lines.push('\n🤲 <b>Аллоҳим! Ушбу ўқилган Қуръони Карим хатмини Ўз даргоҳингда ҳусни қабул айла! Қоримизга ва барча мўмин-мусулмонларга икки дунё саодатини ато эт! Омин!</b>');
+
+  const keyboard = {
+    inline_keyboard: [
+      [
+        {
+          text: '📖 Хатмда қатнашиш',
+          url: botLink(env),
+        },
+      ],
+    ],
+  };
+
+  try {
+    const res = await sendMessage(token, channelId, lines.join('\n'), keyboard);
+    if (res && res.ok && res.result?.message_id) {
+      return res.result.message_id;
+    }
+  } catch (err: any) {
+    console.error('sendSoloHatmToChannel error:', err);
+  }
+  return null;
+}
