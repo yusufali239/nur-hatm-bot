@@ -214,12 +214,24 @@ export async function getActiveHatm(
 }
 
 export async function getLeaderboard(db: D1Database, limit: number = 10): Promise<LeaderboardData> {
-  const topUsersRes = await db.prepare(`
-    SELECT * FROM users
-    WHERE total_juz > 0 OR rating_points > 0
-    ORDER BY rating_points DESC, total_juz DESC
-    LIMIT ?
-  `).bind(limit).all<UserRow>();
+  const [topUsersRes, stats, completedHatms] = await Promise.all([
+    db.prepare(`
+      SELECT * FROM users
+      WHERE total_juz > 0 OR rating_points > 0
+      ORDER BY rating_points DESC, total_juz DESC
+      LIMIT ?
+    `).bind(limit).all<UserRow>(),
+    db.prepare(`
+      SELECT
+        COUNT(DISTINCT user_id) as total_participants,
+        COUNT(*) as total_completed_juzs
+      FROM juzs
+      WHERE status = 'done' AND user_id IS NOT NULL
+    `).first<{ total_participants: number; total_completed_juzs: number }>(),
+    db.prepare(`
+      SELECT COUNT(*) as count FROM hatms WHERE status = 'completed'
+    `).first<{ count: number }>(),
+  ]);
 
   const topUsers = (topUsersRes.results || []).map((u, idx) => ({
     rank: idx + 1,
@@ -232,18 +244,6 @@ export async function getLeaderboard(db: D1Database, limit: number = 10): Promis
     rating_points: u.rating_points,
     badge: idx === 0 ? '👑 Ҳофиз' : idx < 3 ? '🌟 Мумтоз' : '📖 Қори',
   }));
-
-  const stats = await db.prepare(`
-    SELECT
-      COUNT(DISTINCT user_id) as total_participants,
-      COUNT(*) as total_completed_juzs
-    FROM juzs
-    WHERE status = 'done' AND user_id IS NOT NULL
-  `).first<{ total_participants: number; total_completed_juzs: number }>();
-
-  const completedHatms = await db.prepare(`
-    SELECT COUNT(*) as count FROM hatms WHERE status = 'completed'
-  `).first<{ count: number }>();
 
   return {
     top_users: topUsers,
@@ -260,38 +260,55 @@ export async function getFullState(
   hatmId?: number
 ): Promise<FullStateResponse> {
   await ensureInitialized(db, env);
-  const user = await getOrCreateUser(db, env, userId);
-  const { hatm, juzs } = await getActiveHatm(db, hatmId);
-  const leaderboard = await getLeaderboard(db, 10);
 
-  const recentHatmsRes = await db.prepare(`
-    SELECT * FROM hatms ORDER BY number DESC LIMIT 10
-  `).all<HatmRow>();
+  const [user, { hatm, juzs }, leaderboard, recentHatmsRes] = await Promise.all([
+    getOrCreateUser(db, env, userId),
+    getActiveHatm(db, hatmId),
+    getLeaderboard(db, 10),
+    db.prepare(`
+      SELECT
+        h.id,
+        h.number,
+        h.title,
+        h.status,
+        h.dua_done,
+        h.dua_at,
+        h.dua_message,
+        COALESCE(SUM(CASE WHEN j.status = 'done' THEN 1 ELSE 0 END), 0) as done_count,
+        COALESCE(SUM(CASE WHEN j.status = 'free' THEN 1 ELSE 0 END), 0) as free_count,
+        COALESCE(SUM(CASE WHEN j.status = 'booked' THEN 1 ELSE 0 END), 0) as booked_count
+      FROM (
+        SELECT * FROM hatms ORDER BY number DESC LIMIT 10
+      ) h
+      LEFT JOIN juzs j ON j.hatm_id = h.id
+      GROUP BY h.id
+      ORDER BY h.number DESC
+    `).all<{
+      id: number;
+      number: number;
+      title: string;
+      status: 'active' | 'completed';
+      dua_done: number;
+      dua_at: string | null;
+      dua_message: string | null;
+      done_count: number;
+      free_count: number;
+      booked_count: number;
+    }>(),
+  ]);
 
-  const recentHatms = await Promise.all(
-    (recentHatmsRes.results || []).map(async (h) => {
-      const counts = await db.prepare(`
-        SELECT
-          SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) as done_count,
-          SUM(CASE WHEN status = 'free' THEN 1 ELSE 0 END) as free_count,
-          SUM(CASE WHEN status = 'booked' THEN 1 ELSE 0 END) as booked_count
-        FROM juzs WHERE hatm_id = ?
-      `).bind(h.id).first<{ done_count: number; free_count: number; booked_count: number }>();
-
-      return {
-        id: h.id,
-        number: h.number,
-        title: h.title,
-        status: h.status,
-        dua_done: h.dua_done === 1,
-        dua_at: h.dua_at,
-        dua_message: h.dua_message,
-        done_count: counts?.done_count || 0,
-        free_count: counts?.free_count || 0,
-        booked_count: counts?.booked_count || 0,
-      };
-    })
-  );
+  const recentHatms = (recentHatmsRes.results || []).map((h) => ({
+    id: h.id,
+    number: h.number,
+    title: h.title,
+    status: h.status,
+    dua_done: h.dua_done === 1,
+    dua_at: h.dua_at,
+    dua_message: h.dua_message,
+    done_count: h.done_count,
+    free_count: h.free_count,
+    booked_count: h.booked_count,
+  }));
 
   const doneCount = juzs.filter((j) => j.status === 'done').length;
   const bookedCount = juzs.filter((j) => j.status === 'booked').length;
@@ -417,7 +434,7 @@ export async function bookMultipleJuzs(
   }
 
   if (booked.length > 0) {
-    await syncChannelBoard(env, hatm.id);
+    syncChannelBoard(env, hatm.id).catch((err) => console.error('bg syncChannelBoard error:', err));
   }
 
   const fullState = await getFullState(db, env, user.id, hatm.id);
@@ -474,8 +491,8 @@ export async function completeUserJuzs(
     `).bind(completed.length, pointsDelta, user.id).run();
 
     // Auto-delete user's reminder messages from bot chat!
-    await clearUserReminders(db, env, user.id);
-    await syncChannelBoard(env, hatm.id);
+    clearUserReminders(db, env, user.id).catch(() => {});
+    syncChannelBoard(env, hatm.id).catch((err) => console.error('bg syncChannelBoard error:', err));
   }
 
   const fullState = await getFullState(db, env, user.id, hatm.id);
@@ -529,7 +546,7 @@ export async function uncompleteUserJuzs(
       WHERE id = ?
     `).bind(reverted.length, reverted.length * ptsPerJuz, user.id).run();
 
-    await syncChannelBoard(env, hatm.id);
+    syncChannelBoard(env, hatm.id).catch((err) => console.error('bg syncChannelBoard error:', err));
   }
 
   const fullState = await getFullState(db, env, user.id, hatm.id);
@@ -572,8 +589,8 @@ export async function releaseUserJuzs(
   }
 
   if (released.length > 0) {
-    await clearUserReminders(db, env, user.id);
-    await syncChannelBoard(env, hatm.id);
+    clearUserReminders(db, env, user.id).catch(() => {});
+    syncChannelBoard(env, hatm.id).catch((err) => console.error('bg syncChannelBoard error:', err));
   }
 
   const fullState = await getFullState(db, env, user.id, hatm.id);
