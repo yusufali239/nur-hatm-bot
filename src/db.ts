@@ -360,6 +360,23 @@ export async function getFullState(
   };
 }
 
+/**
+ * Run a non-critical async task in Cloudflare Workers background (`waitUntil`)
+ * when provided, or await it directly when running outside a request context.
+ */
+async function runBackgroundTask(
+  promise: Promise<unknown>,
+  label: string,
+  waitUntil?: (p: Promise<unknown>) => void
+): Promise<void> {
+  const safe = promise.catch((err) => console.error(`bg ${label} error:`, err));
+  if (waitUntil) {
+    waitUntil(safe);
+    return;
+  }
+  await safe;
+}
+
 export async function bookMultipleJuzs(
   db: D1Database,
   env: Env,
@@ -367,7 +384,8 @@ export async function bookMultipleJuzs(
   userName: string,
   username: string | null | undefined,
   hatmId: number | undefined,
-  juzNumbers: number[]
+  juzNumbers: number[],
+  waitUntil?: (p: Promise<unknown>) => void
 ): Promise<{ booked: number[]; conflict: number[]; hatm: any; user: any; message: string }> {
   await ensureInitialized(db, env);
   const user = await getOrCreateUser(db, env, userId, userName, username);
@@ -434,7 +452,7 @@ export async function bookMultipleJuzs(
   }
 
   if (booked.length > 0) {
-    syncChannelBoard(env, hatm.id).catch((err) => console.error('bg syncChannelBoard error:', err));
+    await runBackgroundTask(syncChannelBoard(env, hatm.id), 'syncChannelBoard', waitUntil);
   }
 
   const fullState = await getFullState(db, env, user.id, hatm.id);
@@ -457,7 +475,8 @@ export async function completeUserJuzs(
   env: Env,
   userId: number,
   juzNumbers: number[],
-  hatmId?: number
+  hatmId?: number,
+  waitUntil?: (p: Promise<unknown>) => void
 ): Promise<{ processed: number[]; pointsDelta: number; hatm: any; user: any; message: string }> {
   await ensureInitialized(db, env);
   const user = await getOrCreateUser(db, env, userId);
@@ -491,8 +510,8 @@ export async function completeUserJuzs(
     `).bind(completed.length, pointsDelta, user.id).run();
 
     // Auto-delete user's reminder messages from bot chat!
-    clearUserReminders(db, env, user.id).catch(() => {});
-    syncChannelBoard(env, hatm.id).catch((err) => console.error('bg syncChannelBoard error:', err));
+    await runBackgroundTask(clearUserReminders(db, env, user.id), 'clearUserReminders', waitUntil);
+    await runBackgroundTask(syncChannelBoard(env, hatm.id), 'syncChannelBoard', waitUntil);
   }
 
   const fullState = await getFullState(db, env, user.id, hatm.id);
@@ -510,7 +529,8 @@ export async function uncompleteUserJuzs(
   env: Env,
   userId: number,
   juzNumbers: number[],
-  hatmId?: number
+  hatmId?: number,
+  waitUntil?: (p: Promise<unknown>) => void
 ): Promise<{ processed: number[]; pointsDelta: number; hatm: any; user: any; message: string }> {
   await ensureInitialized(db, env);
   const user = await getOrCreateUser(db, env, userId);
@@ -546,7 +566,7 @@ export async function uncompleteUserJuzs(
       WHERE id = ?
     `).bind(reverted.length, reverted.length * ptsPerJuz, user.id).run();
 
-    syncChannelBoard(env, hatm.id).catch((err) => console.error('bg syncChannelBoard error:', err));
+    await runBackgroundTask(syncChannelBoard(env, hatm.id), 'syncChannelBoard', waitUntil);
   }
 
   const fullState = await getFullState(db, env, user.id, hatm.id);
@@ -564,7 +584,8 @@ export async function releaseUserJuzs(
   env: Env,
   userId: number,
   juzNumbers: number[],
-  hatmId?: number
+  hatmId?: number,
+  waitUntil?: (p: Promise<unknown>) => void
 ): Promise<{ processed: number[]; pointsDelta: number; hatm: any; user: any; message: string }> {
   await ensureInitialized(db, env);
   const user = await getOrCreateUser(db, env, userId);
@@ -589,8 +610,8 @@ export async function releaseUserJuzs(
   }
 
   if (released.length > 0) {
-    clearUserReminders(db, env, user.id).catch(() => {});
-    syncChannelBoard(env, hatm.id).catch((err) => console.error('bg syncChannelBoard error:', err));
+    await runBackgroundTask(clearUserReminders(db, env, user.id), 'clearUserReminders', waitUntil);
+    await runBackgroundTask(syncChannelBoard(env, hatm.id), 'syncChannelBoard', waitUntil);
   }
 
   const fullState = await getFullState(db, env, user.id, hatm.id);

@@ -134,7 +134,11 @@ export async function syncChannelBoard(
             await env.DB.prepare('UPDATE hatms SET channel_message_id = ? WHERE id = ?')
               .bind(sendRes.result.message_id, hatm.id)
               .run();
+          } else {
+            console.error('syncChannelBoard fallback sendMessage failed:', sendRes);
           }
+        } else if (!desc.includes('message is not modified')) {
+          console.error('syncChannelBoard editMessageText failed:', hatm.id, res);
         }
       }
     } else {

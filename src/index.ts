@@ -23,6 +23,18 @@ import {
 } from './db';
 import { setWebhook, getMe, getBotToken } from './telegram';
 import { handleTelegramWebhook } from './bot';
+import { syncChannelBoard } from './channel';
+
+function getWaitUntil(c: any): ((p: Promise<unknown>) => void) | undefined {
+  try {
+    if (c.executionCtx && typeof c.executionCtx.waitUntil === 'function') {
+      return (p: Promise<unknown>) => c.executionCtx.waitUntil(p);
+    }
+  } catch {
+    // Ignore when executionCtx is unavailable
+  }
+  return undefined;
+}
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -68,7 +80,8 @@ app.post('/api/juz/book', async (c) => {
       body.user_name || 'Муслим',
       body.username,
       body.hatm_id,
-      body.juz_numbers || []
+      body.juz_numbers || [],
+      getWaitUntil(c)
     );
     return c.json({
       success: true,
@@ -97,7 +110,8 @@ app.post('/api/juz/complete', async (c) => {
     c.env,
     body.user_id,
     body.juz_numbers || [],
-    body.hatm_id
+    body.hatm_id,
+    getWaitUntil(c)
   );
   return c.json({
     success: true,
@@ -117,7 +131,8 @@ app.post('/api/juz/uncomplete', async (c) => {
     c.env,
     body.user_id,
     body.juz_numbers || [],
-    body.hatm_id
+    body.hatm_id,
+    getWaitUntil(c)
   );
   return c.json({
     success: true,
@@ -137,7 +152,8 @@ app.post('/api/juz/release', async (c) => {
     c.env,
     body.user_id,
     body.juz_numbers || [],
-    body.hatm_id
+    body.hatm_id,
+    getWaitUntil(c)
   );
   return c.json({
     success: true,
@@ -348,6 +364,20 @@ app.post('/api/admin/reset-all-ratings', async (c) => {
     message: res.message,
     full_state: res.fullState,
   });
+});
+
+app.post('/api/admin/sync-channel', async (c) => {
+  const body = await c.req.json<any>().catch(() => ({}));
+  if (body.hatm_id) {
+    await syncChannelBoard(c.env, body.hatm_id);
+    return c.json({ success: true, synced_ids: [body.hatm_id] });
+  }
+  const activeRes = await c.env.DB.prepare("SELECT id FROM hatms WHERE status = 'active' ORDER BY number DESC").all<{ id: number }>();
+  const ids = (activeRes.results || []).map((r) => r.id);
+  for (const id of ids) {
+    await syncChannelBoard(c.env, id);
+  }
+  return c.json({ success: true, synced_ids: ids });
 });
 
 // ==========================================
