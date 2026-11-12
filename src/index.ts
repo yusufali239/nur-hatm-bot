@@ -20,6 +20,7 @@ import {
   sweepExpiredJuzs,
   getOrCreateUser,
   getActiveHatm,
+  banUserById,
 } from './db';
 import { setWebhook, getMe, getBotToken } from './telegram';
 import { handleTelegramWebhook } from './bot';
@@ -63,6 +64,9 @@ app.get('/api/state', async (c) => {
   const userId = parseInt(c.req.query('user_id') || '777000', 10);
   const hatmId = c.req.query('hatm_id') ? parseInt(c.req.query('hatm_id')!, 10) : undefined;
   const state = await getFullState(c.env.DB, c.env, userId, hatmId);
+  if (state.user.is_banned) {
+    return c.json({ error: 'banned', message: '🚫 Сизга тизимдан фойдаланиш тақиқланган.' }, 403);
+  }
   return c.json(state);
 });
 
@@ -104,65 +108,80 @@ app.post('/api/juz/book', async (c) => {
 app.post('/api/book', (c) => c.redirect('/api/juz/book', 307));
 
 app.post('/api/juz/complete', async (c) => {
-  const body = await c.req.json<any>();
-  const res = await completeUserJuzs(
-    c.env.DB,
-    c.env,
-    body.user_id,
-    body.juz_numbers || [],
-    body.hatm_id,
-    getWaitUntil(c)
-  );
-  return c.json({
-    success: true,
-    processed: res.processed,
-    points_delta: res.pointsDelta,
-    message: res.message,
-    hatm: res.hatm,
-    user: res.user,
-  });
+  try {
+    const body = await c.req.json<any>();
+    const res = await completeUserJuzs(
+      c.env.DB,
+      c.env,
+      body.user_id,
+      body.juz_numbers || [],
+      body.hatm_id,
+      getWaitUntil(c)
+    );
+    return c.json({
+      success: true,
+      processed: res.processed,
+      points_delta: res.pointsDelta,
+      message: res.message,
+      hatm: res.hatm,
+      user: res.user,
+    });
+  } catch (err: any) {
+    const msg = err.message || 'Хатолик юз берди';
+    return c.json({ success: false, message: msg }, msg.includes('тақиқланган') ? 403 : 400);
+  }
 });
 app.post('/api/complete', (c) => c.redirect('/api/juz/complete', 307));
 
 app.post('/api/juz/uncomplete', async (c) => {
-  const body = await c.req.json<any>();
-  const res = await uncompleteUserJuzs(
-    c.env.DB,
-    c.env,
-    body.user_id,
-    body.juz_numbers || [],
-    body.hatm_id,
-    getWaitUntil(c)
-  );
-  return c.json({
-    success: true,
-    processed: res.processed,
-    points_delta: res.pointsDelta,
-    message: res.message,
-    hatm: res.hatm,
-    user: res.user,
-  });
+  try {
+    const body = await c.req.json<any>();
+    const res = await uncompleteUserJuzs(
+      c.env.DB,
+      c.env,
+      body.user_id,
+      body.juz_numbers || [],
+      body.hatm_id,
+      getWaitUntil(c)
+    );
+    return c.json({
+      success: true,
+      processed: res.processed,
+      points_delta: res.pointsDelta,
+      message: res.message,
+      hatm: res.hatm,
+      user: res.user,
+    });
+  } catch (err: any) {
+    const msg = err.message || 'Хатолик юз берди';
+    return c.json({ success: false, message: msg }, msg.includes('тақиқланган') ? 403 : 400);
+  }
 });
 app.post('/api/uncomplete', (c) => c.redirect('/api/juz/uncomplete', 307));
 
 app.post('/api/juz/release', async (c) => {
-  const body = await c.req.json<any>();
-  const res = await releaseUserJuzs(
-    c.env.DB,
-    c.env,
-    body.user_id,
-    body.juz_numbers || [],
-    body.hatm_id,
-    getWaitUntil(c)
-  );
-  return c.json({
-    success: true,
-    processed: res.processed,
-    points_delta: res.pointsDelta,
-    message: res.message,
-    hatm: res.hatm,
-    user: res.user,
-  });
+  try {
+    const body = await c.req.json<any>();
+    const res = await releaseUserJuzs(
+      c.env.DB,
+      c.env,
+      body.user_id,
+      body.juz_numbers || [],
+      body.hatm_id,
+      getWaitUntil(c)
+    );
+    return c.json({
+      success: true,
+      processed: res.processed,
+      points_delta: res.pointsDelta,
+      message: res.message,
+      hatm: res.hatm,
+      user: res.user,
+    });
+  } catch (err: any) {
+    const msg = err.message || 'Хатолик юз берди';
+    return c.json({ success: false, message: msg }, msg.includes('тақиқланган') ? 403 : 400);
+  }
 });
 app.post('/api/release', (c) => c.redirect('/api/juz/release', 307));
 
@@ -378,6 +397,17 @@ app.post('/api/admin/sync-channel', async (c) => {
     await syncChannelBoard(c.env, id);
   }
   return c.json({ success: true, synced_ids: ids });
+});
+
+app.post('/api/admin/ban-user', async (c) => {
+  const body = await c.req.json<any>();
+  const targetUserId = parseInt(String(body.target_user_id), 10);
+  if (isNaN(targetUserId)) {
+    return c.json({ success: false, message: 'Invalid target_user_id' }, 400);
+  }
+  const banned = body.banned !== undefined ? Boolean(body.banned) : true;
+  const res = await banUserById(c.env.DB, c.env, targetUserId, banned);
+  return c.json({ success: true, ...res });
 });
 
 // ==========================================

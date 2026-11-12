@@ -1,5 +1,5 @@
 import { Env, HatmRow, JuzRow, UserRow } from './types';
-import { getBotToken, sendMessage, editMessageText, deleteMessage, answerCallbackQuery } from './telegram';
+import { getBotToken, sendMessage, editMessageText, deleteMessage, answerCallbackQuery, banChatMember } from './telegram';
 import {
   getOrCreateUser,
   getActiveHatm,
@@ -13,6 +13,7 @@ import {
   createSoloHatmRequest,
   approveSoloHatm,
   rejectSoloHatm,
+  isUserBanned,
 } from './db';
 import { getChannelUrl } from './channel';
 
@@ -110,6 +111,10 @@ export async function handleTelegramWebhook(
     }
 
     const user = await getOrCreateUser(env.DB, env, fromUser.id, fromUser.first_name, fromUser.username);
+    if (user.is_banned === 1) {
+      await answerCallbackQuery(token, cb.id, '🚫 Сизга ботдан фойдаланиш тақиқланган.', true);
+      return new Response('ok');
+    }
     const { hatm, juzs } = await getActiveHatm(env.DB);
     const isAdmin = isAdminUser(env, user);
 
@@ -381,7 +386,28 @@ export async function handleTelegramWebhook(
     const msg = update.message;
     const chatId = msg.chat.id;
     const isPrivate = msg.chat.type === 'private';
+    const isGroup = msg.chat.type === 'group' || msg.chat.type === 'supergroup';
     const text = (msg.text || '').trim();
+
+    if (isGroup) {
+      ctx.waitUntil((async () => {
+        try {
+          const row = await env.DB.prepare("SELECT value FROM bot_state WHERE key = 'known_group_ids'").first<{ value: string }>();
+          const ids: string[] = row?.value ? JSON.parse(row.value) : [];
+          const cidStr = String(chatId);
+          if (!ids.includes(cidStr)) {
+            ids.push(cidStr);
+            const serialized = JSON.stringify(ids);
+            await env.DB.prepare(`
+              INSERT INTO bot_state (key, value) VALUES ('known_group_ids', ?)
+              ON CONFLICT(key) DO UPDATE SET value = ?
+            `).bind(serialized, serialized).run();
+          }
+        } catch {
+          // Ignore group tracking errors
+        }
+      })());
+    }
 
     // 2a. Auto-delete service messages (users join/leave, pinned messages) in groups
     if (
@@ -392,7 +418,27 @@ export async function handleTelegramWebhook(
       msg.new_chat_photo ||
       msg.delete_chat_photo
     ) {
+      if (isGroup && Array.isArray(msg.new_chat_members)) {
+        for (const member of msg.new_chat_members) {
+          if (member?.id && await isUserBanned(env.DB, member.id)) {
+            ctx.waitUntil(banChatMember(token, chatId, member.id));
+          }
+        }
+      }
       ctx.waitUntil(deleteMessage(token, chatId, msg.message_id));
+      return new Response('ok');
+    }
+
+    if (msg.from?.id && await isUserBanned(env.DB, msg.from.id)) {
+      if (isGroup) {
+        ctx.waitUntil(deleteMessage(token, chatId, msg.message_id));
+        ctx.waitUntil(banChatMember(token, chatId, msg.from.id));
+      } else {
+        if (text.startsWith('/start')) {
+          ctx.waitUntil(deleteMessage(token, chatId, msg.message_id));
+        }
+        await sendMessage(token, chatId, '🚫 Сизга ботдан фойдаланиш тақиқланган.');
+      }
       return new Response('ok');
     }
 

@@ -24,6 +24,7 @@ export interface UserRow {
   is_admin: number;
   is_super_admin: number;
   is_bot_blocked: number;
+  is_banned?: number;
   created_at: string;
   updated_at: string;
 }
@@ -128,6 +129,7 @@ export interface FullStateResponse {
     expired_count: number;
     is_admin: boolean;
     is_super_admin: boolean;
+    is_banned?: boolean;
   };
   leaderboard: LeaderboardData;
   recent_hatms: Array<{

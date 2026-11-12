@@ -38,6 +38,7 @@ export const App: React.FC = () => {
   const [state, setState] = useState<FullStateResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [submitting, setSubmitting] = useState<boolean>(false);
+  const [bannedMessage, setBannedMessage] = useState<string | null>(null);
 
   // Multi-select state: NO LIMIT! Users can select 1, 5, 10, or all 30 free Juzs at once
   const [selectedJuzs, setSelectedJuzs] = useState<number[]>([]);
@@ -71,11 +72,18 @@ export const App: React.FC = () => {
           idToFetch
         );
         setState(data);
+        setBannedMessage(null);
         if (data.hatm) {
           setActiveHatmId(data.hatm.id);
         }
       } catch (err: any) {
-        showToast(err.message || 'Сервер билан боғланишда хатолик', 'error');
+        const msg = err.message || 'Сервер билан боғланишда хатолик';
+        if (msg.includes('тақиқланган') || msg.toLowerCase().includes('banned')) {
+          setBannedMessage(msg);
+          setState(null);
+        } else {
+          showToast(msg, 'error');
+        }
       } finally {
         if (!silent) setLoading(false);
       }
@@ -269,6 +277,18 @@ export const App: React.FC = () => {
   }, [hatm, filterMode, identity.id]);
 
   const progressPct = hatm ? Math.round((hatm.done_count / 30) * 100) : 0;
+
+  if (bannedMessage) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#0A0A0F] via-[#111324] to-[#1A1A2E] text-white px-6">
+        <div className="liquid-glass rounded-3xl p-6 max-w-sm w-full text-center border border-rose-500/30">
+          <div className="text-4xl mb-3">🚫</div>
+          <h2 className="text-lg font-extrabold text-rose-200 mb-2">Кириш тақиқланган</h2>
+          <p className="text-sm text-white/75">{bannedMessage}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-b from-[#0A0A0F] via-[#111324] to-[#1A1A2E] text-white">

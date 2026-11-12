@@ -1,6 +1,6 @@
 import { Env, HatmRow, JuzRow, UserRow, SoloHatmRow, FullStateResponse, LeaderboardData } from './types';
-import { syncChannelBoard, deleteChannelPost, sendGroupDua, sendSoloHatmToChannel } from './channel';
-import { sendMessage, deleteMessage, getBotToken } from './telegram';
+import { syncChannelBoard, deleteChannelPost, sendGroupDua, sendSoloHatmToChannel, getChannelId } from './channel';
+import { sendMessage, deleteMessage, getBotToken, banChatMember, unbanChatMember } from './telegram';
 
 export function getAdminIds(env: Env): number[] {
   const raw = env.ADMIN_IDS || '';
@@ -42,6 +42,7 @@ export async function ensureInitialized(db: D1Database, env: Env): Promise<void>
           is_admin INTEGER NOT NULL DEFAULT 0,
           is_super_admin INTEGER NOT NULL DEFAULT 0,
           is_bot_blocked INTEGER NOT NULL DEFAULT 0,
+          is_banned INTEGER NOT NULL DEFAULT 0,
           created_at TEXT NOT NULL DEFAULT (datetime('now')),
           updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
@@ -122,6 +123,13 @@ export async function ensureInitialized(db: D1Database, env: Env): Promise<void>
     }
   } catch (err: any) {
     console.error('ensureInitialized solo_hatms error:', err);
+  }
+
+  // Ensure is_banned column exists on users for existing databases
+  try {
+    await db.prepare('ALTER TABLE users ADD COLUMN is_banned INTEGER NOT NULL DEFAULT 0').run();
+  } catch {
+    // Column already exists
   }
 
   // Clean up legacy test/dummy admin IDs (123456789, 1234567)
@@ -354,6 +362,7 @@ export async function getFullState(
       expired_count: user.expired_count,
       is_admin: isAdminUser(env, user),
       is_super_admin: user.is_super_admin === 1,
+      is_banned: user.is_banned === 1,
     },
     leaderboard,
     recent_hatms: recentHatms,
@@ -377,6 +386,17 @@ async function runBackgroundTask(
   await safe;
 }
 
+export function assertUserNotBanned(user: UserRow | null): void {
+  if (user && user.is_banned === 1) {
+    throw new Error('🚫 Сизга тизимдан фойдаланиш тақиқланган.');
+  }
+}
+
+export async function isUserBanned(db: D1Database, userId: number): Promise<boolean> {
+  const row = await db.prepare('SELECT is_banned FROM users WHERE id = ?').bind(userId).first<{ is_banned: number }>();
+  return row?.is_banned === 1;
+}
+
 export async function bookMultipleJuzs(
   db: D1Database,
   env: Env,
@@ -389,6 +409,7 @@ export async function bookMultipleJuzs(
 ): Promise<{ booked: number[]; conflict: number[]; hatm: any; user: any; message: string }> {
   await ensureInitialized(db, env);
   const user = await getOrCreateUser(db, env, userId, userName, username);
+  assertUserNotBanned(user);
   const { hatm } = await getActiveHatm(db, hatmId);
 
   // Maximum active booked (unfinished) juzs per reader at a time = 2
@@ -480,6 +501,7 @@ export async function completeUserJuzs(
 ): Promise<{ processed: number[]; pointsDelta: number; hatm: any; user: any; message: string }> {
   await ensureInitialized(db, env);
   const user = await getOrCreateUser(db, env, userId);
+  assertUserNotBanned(user);
   const { hatm } = await getActiveHatm(db, hatmId);
 
   const completed: number[] = [];
@@ -534,6 +556,7 @@ export async function uncompleteUserJuzs(
 ): Promise<{ processed: number[]; pointsDelta: number; hatm: any; user: any; message: string }> {
   await ensureInitialized(db, env);
   const user = await getOrCreateUser(db, env, userId);
+  assertUserNotBanned(user);
   const { hatm } = await getActiveHatm(db, hatmId);
 
   const reverted: number[] = [];
@@ -589,6 +612,7 @@ export async function releaseUserJuzs(
 ): Promise<{ processed: number[]; pointsDelta: number; hatm: any; user: any; message: string }> {
   await ensureInitialized(db, env);
   const user = await getOrCreateUser(db, env, userId);
+  assertUserNotBanned(user);
   const { hatm } = await getActiveHatm(db, hatmId);
 
   const released: number[] = [];
@@ -1180,5 +1204,111 @@ export async function rejectSoloHatm(
     success: true,
     soloHatm: updatedSolo || solo,
     user: user || undefined,
+  };
+}
+
+/**
+ * Ban or unban a user from bot, Mini App, and Telegram channel/known groups.
+ * Preserves historical user stats & completed juz records.
+ */
+export async function banUserById(
+  db: D1Database,
+  env: Env,
+  targetUserId: number,
+  banned: boolean = true
+): Promise<{
+  userId: number;
+  banned: boolean;
+  releasedBookedCount: number;
+  telegramResults: Array<{ chatId: string; result: any }>;
+}> {
+  await ensureInitialized(db, env);
+
+  const val = banned ? 1 : 0;
+  await db.prepare(`
+    INSERT INTO users (id, name, is_banned, created_at, updated_at)
+    VALUES (?, ?, ?, datetime('now'), datetime('now'))
+    ON CONFLICT(id) DO UPDATE SET is_banned = ?, updated_at = datetime('now')
+  `).bind(targetUserId, `User #${targetUserId}`, val, val).run();
+
+  let releasedBookedCount = 0;
+  const telegramResults: Array<{ chatId: string; result: any }> = [];
+  const token = getBotToken(env);
+
+  if (banned) {
+    // Free any currently booked (unfinished) juzs held by this user in active hatms
+    const activeBooked = await db.prepare(`
+      SELECT DISTINCT j.hatm_id
+      FROM juzs j
+      JOIN hatms h ON h.id = j.hatm_id
+      WHERE h.status = 'active' AND j.user_id = ? AND j.status = 'booked'
+    `).bind(targetUserId).all<{ hatm_id: number }>();
+
+    const relRes = await db.prepare(`
+      UPDATE juzs
+      SET status = 'free',
+          user_id = NULL,
+          user_name = NULL,
+          booked_at = NULL,
+          expires_at = NULL,
+          warning_sent = 0
+      WHERE user_id = ? AND status = 'booked'
+        AND hatm_id IN (SELECT id FROM hatms WHERE status = 'active')
+    `).bind(targetUserId).run();
+    releasedBookedCount = relRes.meta.changes || 0;
+
+    if (releasedBookedCount > 0) {
+      for (const row of activeBooked.results || []) {
+        await syncChannelBoard(env, row.hatm_id);
+      }
+    }
+
+    // Delete last bot menu message if recorded
+    if (token) {
+      const stateKey = `last_menu_${targetUserId}`;
+      const prevMenu = await db.prepare('SELECT value FROM bot_state WHERE key = ?').bind(stateKey).first<{ value: string }>();
+      if (prevMenu?.value) {
+        const msgId = parseInt(prevMenu.value, 10);
+        if (!isNaN(msgId)) {
+          await deleteMessage(token, targetUserId, msgId).catch(() => {});
+        }
+        await db.prepare('DELETE FROM bot_state WHERE key = ?').bind(stateKey).run();
+      }
+    }
+  }
+
+  // Ban/unban in Telegram channel and any known groups
+  if (token) {
+    const chatIds = new Set<string>();
+    const channelId = getChannelId(env);
+    if (channelId) chatIds.add(channelId);
+
+    const knownGroupsRow = await db.prepare("SELECT value FROM bot_state WHERE key = 'known_group_ids'").first<{ value: string }>();
+    if (knownGroupsRow?.value) {
+      try {
+        const parsed = JSON.parse(knownGroupsRow.value);
+        if (Array.isArray(parsed)) {
+          for (const gid of parsed) {
+            if (gid !== null && gid !== undefined) chatIds.add(String(gid));
+          }
+        }
+      } catch {
+        // Ignore malformed JSON
+      }
+    }
+
+    for (const cid of chatIds) {
+      const res = banned
+        ? await banChatMember(token, cid, targetUserId)
+        : await unbanChatMember(token, cid, targetUserId);
+      telegramResults.push({ chatId: cid, result: res });
+    }
+  }
+
+  return {
+    userId: targetUserId,
+    banned,
+    releasedBookedCount,
+    telegramResults,
   };
 }

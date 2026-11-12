@@ -116,3 +116,27 @@ export async function setWebhook(
 export async function getMe(token: string): Promise<any> {
   return callTelegram(token, 'getMe', {});
 }
+
+export async function banChatMember(
+  token: string,
+  chatId: number | string,
+  userId: number
+): Promise<any> {
+  return callTelegram(token, 'banChatMember', {
+    chat_id: chatId,
+    user_id: userId,
+    revoke_messages: true,
+  });
+}
+
+export async function unbanChatMember(
+  token: string,
+  chatId: number | string,
+  userId: number
+): Promise<any> {
+  return callTelegram(token, 'unbanChatMember', {
+    chat_id: chatId,
+    user_id: userId,
+    only_if_banned: true,
+  });
+}
