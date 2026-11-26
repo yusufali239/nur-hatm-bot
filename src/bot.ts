@@ -15,16 +15,25 @@ import {
   rejectSoloHatm,
   isUserBanned,
 } from './db';
-import { getChannelUrl } from './channel';
+import { getChannelUrl, formatReaderName } from './channel';
 
-export function getMainKeyboard(env: Env, webappUrl: string, isAdmin: boolean): any {
-  const url = webappUrl || 'https://nur-hatm-bot.vercel.app';
+function buildWebAppUrl(baseUrl: string, hatmId?: number, extraQuery?: string): string {
+  const url = baseUrl || 'https://nur-hatm-bot.vercel.app';
+  const params: string[] = [];
+  if (hatmId) params.push(`hatm_id=${hatmId}`);
+  if (extraQuery) params.push(extraQuery);
+  if (params.length === 0) return url;
+  return `${url}${url.includes('?') ? '&' : '?'}${params.join('&')}`;
+}
+
+export function getMainKeyboard(env: Env, webappUrl: string, isAdmin: boolean, hatmId?: number): any {
+  const openUrl = buildWebAppUrl(webappUrl, hatmId);
   const channelUrl = getChannelUrl(env);
   const buttons: any[] = [
     [
       {
         text: '📖 Пора олиш',
-        web_app: { url },
+        web_app: { url: openUrl },
       },
     ],
     [
@@ -59,7 +68,7 @@ export function getMainKeyboard(env: Env, webappUrl: string, isAdmin: boolean): 
       },
       {
         text: '👑 Админ Панел',
-        web_app: { url: `${url}?tab=admin` },
+        web_app: { url: buildWebAppUrl(webappUrl, hatmId, 'tab=admin') },
       },
     ]);
   }
@@ -70,9 +79,14 @@ export function getMainKeyboard(env: Env, webappUrl: string, isAdmin: boolean): 
 export function formatWelcomeText(user: UserRow, hatm: HatmRow, juzs: JuzRow[]): string {
   const doneCount = juzs.filter((j) => j.status === 'done').length;
   const freeCount = juzs.filter((j) => j.status === 'free').length;
+  const myBooked = juzs.filter((j) => j.user_id === user.id && j.status === 'booked');
+  const bookedLine =
+    myBooked.length > 0
+      ? `\n⏳ Сизда банд: <b>${myBooked.map((j) => `${j.number}-пора`).join(', ')}</b>`
+      : '';
   return (
     `🌙 <b>${hatm.title}</b>\n\n` +
-    `📊 ${doneCount}/30 ўқилди • ${freeCount} та бўш\n` +
+    `📊 ${doneCount}/30 ўқилди • ${freeCount} та бўш${bookedLine}\n` +
     `🌟 Сизда: <b>${user.rating_points} балл</b> (${user.total_juz} пора)`
   );
 }
@@ -115,7 +129,7 @@ export async function handleTelegramWebhook(
       await answerCallbackQuery(token, cb.id, '🚫 Сизга ботдан фойдаланиш тақиқланган.', true);
       return new Response('ok');
     }
-    const { hatm, juzs } = await getActiveHatm(env.DB);
+    const { hatm, juzs } = await getActiveHatm(env.DB, undefined, user.id);
     const isAdmin = isAdminUser(env, user);
 
     if (data === 'show_leaderboard') {
@@ -123,8 +137,8 @@ export async function handleTelegramWebhook(
       const lines = ['🏆 <b>Жаннат боғининг энг фаоллари (Топ-10)</b>\n'];
       const medals: Record<number, string> = { 1: '🥇', 2: '🥈', 3: '🥉' };
       for (const u of lb.top_users) {
-        const m = medals[u.rank] || `<b>${u.rank}.</b>`;
-        lines.push(`\u200E${m} <b>\u2068${u.name}\u2069</b>\u200E — ${u.total_juz} пора • <b>${u.rating_points} балл</b>`);
+        const m = medals[u.rank] || '🔹';
+        lines.push(`\u200E${m} <b>${u.rank}-ўрин:</b> <b>${formatReaderName(u.name)}</b> — ${u.total_juz} пора • <b>${u.rating_points} балл</b>`);
       }
       if (lb.top_users.length === 0) {
         lines.push('Ҳозирча ўқилган поралар йўқ. Биринчи бўлиб савоб олинг!');
@@ -133,7 +147,7 @@ export async function handleTelegramWebhook(
 
       const kb = {
         inline_keyboard: [
-          [{ text: '📖 Пора олиш', web_app: { url: webappUrl } }],
+          [{ text: '📖 Пора олиш', web_app: { url: buildWebAppUrl(webappUrl, hatm.id) } }],
           [
             { text: '📢 Каналга ўтиш', url: getChannelUrl(env) },
             { text: '◀️ Ортга', callback_data: 'back_to_main' },
@@ -154,14 +168,15 @@ export async function handleTelegramWebhook(
       const doneStr = myDone.length > 0 ? myDone.map((j) => `${j.number}-пора`).join(', ') : 'Йўқ';
 
       const text =
-        `👤 <b>\u2068${user.name}\u2069</b>\u200E\n\n` +
+        `👤 <b>Қори:</b> <b>${formatReaderName(user.name)}</b>\n` +
+        `🌙 <b>Хатм:</b> ${hatm.title}\n\n` +
         `🌟 <b>${user.rating_points} балл</b> • ${user.total_juz} пора (${user.total_hatm} хатм)\n\n` +
         `⏳ <b>Банд:</b> ${bookedStr}\n` +
         `✅ <b>Ўқилди:</b> ${doneStr}`;
 
       const kb = {
         inline_keyboard: [
-          [{ text: '📖 Иловани очиш', web_app: { url: webappUrl } }],
+          [{ text: '📖 Иловани очиш', web_app: { url: buildWebAppUrl(webappUrl, hatm.id) } }],
           [
             { text: '📢 Каналга ўтиш', url: getChannelUrl(env) },
             { text: '◀️ Ортга', callback_data: 'back_to_main' },
@@ -176,7 +191,7 @@ export async function handleTelegramWebhook(
 
     if (data === 'back_to_main' || data === 'admin_dua_cancel') {
       const text = formatWelcomeText(user, hatm, juzs);
-      const kb = getMainKeyboard(env, webappUrl, isAdmin);
+      const kb = getMainKeyboard(env, webappUrl, isAdmin, hatm.id);
       await editMessageText(token, msg.chat.id, msg.message_id, text, kb);
       await answerCallbackQuery(token, cb.id);
       return new Response('ok');
@@ -271,7 +286,7 @@ export async function handleTelegramWebhook(
       const adminIds = await getAllAdminIds(env.DB, env);
       const adminText =
         `🌙 <b>Янги Шахсий Хатм аризаси!</b>\n\n` +
-        `👤 <b>Қори:</b> \u2068${user.name}\u2069\u200E ${user.username ? '(@' + user.username + ')' : ''}\n` +
+        `👤 <b>Қори:</b> ${formatReaderName(user.name)} ${user.username ? '(@' + user.username + ')' : ''}\n` +
         `🆔 <b>ID:</b> <code>${user.id}</code>\n` +
         `📊 <b>Ҳолати:</b> ${user.total_hatm} хатм • ${user.total_juz} пора (${user.rating_points} балл)\n\n` +
         `<i>Қори Қуръоннинг 30 порасини мустақил тўлиқ ўқиб тамомлаганини билдирди. Ушбу шахсий хатмни тасдиқлайсизми?</i>`;
@@ -314,8 +329,8 @@ export async function handleTelegramWebhook(
       const solo = res.soloHatm!;
       const text =
         `✅ <b>Шахсий Хатм тасдиқланди ва гуруҳга чиқарилди!</b>\n\n` +
-        `👤 <b>Қори:</b> \u2068${solo.user_name}\u2069\u200E\n` +
-        `🛡 <b>Тасдиқлади:</b> \u2068${user.name}\u2069\u200E`;
+        `👤 <b>Қори:</b> ${formatReaderName(solo.user_name)}\n` +
+        `🛡 <b>Тасдиқлади:</b> ${formatReaderName(user.name)}`;
 
       await editMessageText(token, msg.chat.id, msg.message_id, text);
       await answerCallbackQuery(token, cb.id, 'Шахсий хатм тасдиқланди ва чиқарилди!');
@@ -362,7 +377,7 @@ export async function handleTelegramWebhook(
       const solo = res.soloHatm!;
       const text =
         `❌ <b>Шахсий Хатм аризаси рад этилди.</b>\n\n` +
-        `👤 <b>Қори:</b> \u2068${solo.user_name}\u2069\u200E\n` +
+        `👤 <b>Қори:</b> ${formatReaderName(solo.user_name)}\n` +
         `🛡 <b>Рад этди:</b> \u2068${user.name}\u2069\u200E`;
 
       await editMessageText(token, msg.chat.id, msg.message_id, text);
@@ -448,7 +463,26 @@ export async function handleTelegramWebhook(
       if (!fromUser) return new Response('ok');
 
       const user = await getOrCreateUser(env.DB, env, fromUser.id, fromUser.first_name, fromUser.username);
-      const { hatm, juzs } = await getActiveHatm(env.DB);
+      // Priority: 1) hatm where user currently has a booked juz; 2) explicit /start hatm_<id> if provided; 3) earliest unfinished active hatm
+      let requestedHatmId: number | undefined;
+      const startParts = text.split(/\s+/);
+      if (startParts.length >= 2 && startParts[1].startsWith('hatm_')) {
+        const parsedId = parseInt(startParts[1].slice(5), 10);
+        if (!isNaN(parsedId) && parsedId > 0) {
+          // Only honor deep-link hatm_id if the user does NOT currently have a booked juz elsewhere
+          const userBooked = await env.DB.prepare(`
+            SELECT j.hatm_id
+            FROM juzs j
+            JOIN hatms h ON h.id = j.hatm_id
+            WHERE h.status = 'active' AND j.user_id = ? AND j.status = 'booked'
+            LIMIT 1
+          `).bind(user.id).first<{ hatm_id: number }>();
+          if (!userBooked) {
+            requestedHatmId = parsedId;
+          }
+        }
+      }
+      const { hatm, juzs } = await getActiveHatm(env.DB, requestedHatmId, user.id);
       const isAdmin = isAdminUser(env, user);
 
       // Check last menu message to auto-delete
@@ -462,7 +496,7 @@ export async function handleTelegramWebhook(
       ctx.waitUntil(deleteMessage(token, chatId, msg.message_id));
 
       const welcome = formatWelcomeText(user, hatm, juzs);
-      const kb = getMainKeyboard(env, webappUrl, isAdmin);
+      const kb = getMainKeyboard(env, webappUrl, isAdmin, hatm.id);
 
       const sendRes = await sendMessage(token, chatId, welcome, kb);
       if (sendRes && sendRes.ok && sendRes.result?.message_id) {

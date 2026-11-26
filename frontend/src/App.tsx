@@ -58,7 +58,20 @@ export const App: React.FC = () => {
     }, 3800);
   }, []);
 
-  const [activeHatmId, setActiveHatmId] = useState<number | null>(null);
+  const [activeHatmId, setActiveHatmId] = useState<number | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = params.get('hatm_id');
+    if (fromQuery) {
+      const parsed = parseInt(fromQuery, 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
+    if (startParam && startParam.startsWith('hatm_')) {
+      const parsed = parseInt(startParam.slice(5), 10);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    return null;
+  });
 
   const loadState = useCallback(
     async (silent = false, targetHatmId?: number | null) => {

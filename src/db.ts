@@ -183,11 +183,36 @@ export async function getOrCreateUser(
 
 export async function getActiveHatm(
   db: D1Database,
-  hatmId?: number
+  hatmId?: number,
+  userId?: number
 ): Promise<{ hatm: HatmRow; juzs: JuzRow[] }> {
   let hatm: HatmRow | null = null;
   if (hatmId) {
     hatm = await db.prepare('SELECT * FROM hatms WHERE id = ?').bind(hatmId).first<HatmRow>();
+  }
+  if (!hatm && userId) {
+    // 1. Prioritize the earliest active hatm where this reader currently has a booked juz
+    hatm = await db.prepare(`
+      SELECT h.*
+      FROM hatms h
+      JOIN juzs j ON j.hatm_id = h.id
+      WHERE h.status = 'active' AND j.user_id = ? AND j.status = 'booked'
+      ORDER BY h.number ASC
+      LIMIT 1
+    `).bind(userId).first<HatmRow>();
+  }
+  if (!hatm) {
+    // 2. Otherwise pick the earliest (oldest) unfinished active hatm (preferring ones with free juzs)
+    hatm = await db.prepare(`
+      SELECT h.*
+      FROM hatms h
+      WHERE h.status = 'active'
+        AND (SELECT COUNT(*) FROM juzs j WHERE j.hatm_id = h.id AND j.status = 'done') < 30
+      ORDER BY
+        CASE WHEN (SELECT COUNT(*) FROM juzs j WHERE j.hatm_id = h.id AND j.status = 'free') > 0 THEN 0 ELSE 1 END ASC,
+        h.number ASC
+      LIMIT 1
+    `).first<HatmRow>();
   }
   if (!hatm) {
     hatm = await db.prepare('SELECT * FROM hatms WHERE status = "active" ORDER BY number DESC LIMIT 1').first<HatmRow>();
@@ -271,7 +296,7 @@ export async function getFullState(
 
   const [user, { hatm, juzs }, leaderboard, recentHatmsRes] = await Promise.all([
     getOrCreateUser(db, env, userId),
-    getActiveHatm(db, hatmId),
+    getActiveHatm(db, hatmId, userId),
     getLeaderboard(db, 10),
     db.prepare(`
       SELECT

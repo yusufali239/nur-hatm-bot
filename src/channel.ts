@@ -16,6 +16,32 @@ export function getChannelUrl(env: Env): string {
   return 'https://t.me/nurhatmquran';
 }
 
+const BIDI_CONTROL_RE = /[\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
+const RTL_CHAR_RE = /[\u0591-\u07FF\uFB1D-\uFDFD\uFE70-\uFEFC]/;
+
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Cleans unbalanced bidi control characters (e.g. leading RLM in Arabic Telegram names),
+ * escapes HTML, and isolates RTL names so surrounding LTR text, numbers, and emojis never flip.
+ */
+export function formatReaderName(name?: string | null, fallback: string = 'Муслим'): string {
+  const cleaned = (name || '')
+    .replace(BIDI_CONTROL_RE, '')
+    .replace(/\s+/g, ' ')
+    .trim() || fallback;
+  const safe = escapeHtml(cleaned);
+  if (RTL_CHAR_RE.test(cleaned)) {
+    return `\u200E\u2068${safe}\u2069\u200E`;
+  }
+  return safe;
+}
+
 /**
  * Requirement 7:
  * editMessageText in channel @hatmiquaan formatted as:
@@ -49,11 +75,11 @@ export function buildChannelHatmText(
   for (const j of sorted) {
     const num = String(j.number).padStart(2, '0');
     if (j.status === 'done') {
-      const reader = j.user_name || 'Муслим';
-      lines.push(`\u200E<b>${num}-пора:</b> \u2068${reader}\u2069\u200E ✅`);
+      const reader = formatReaderName(j.user_name);
+      lines.push(`\u200E<b>${num}-пора:</b> ${reader} ✅`);
     } else if (j.status === 'booked') {
-      const reader = j.user_name || 'Муслим';
-      lines.push(`\u200E<b>${num}-пора:</b> \u2068${reader}\u2069\u200E ⏳`);
+      const reader = formatReaderName(j.user_name);
+      lines.push(`\u200E<b>${num}-пора:</b> ${reader} ⏳`);
     } else {
       lines.push(`\u200E<b>${num}-пора:</b>`);
     }
@@ -68,12 +94,12 @@ export function buildChannelHatmText(
 
   if (topList.length > 0) {
     if (topList.length === 1) {
-      lines.push(`\u200E🏆 <b>Топ:</b> \u2068${topList[0].name}\u2069\u200E — ${topList[0].total_juz} пора`);
+      lines.push(`\u200E🏆 <b>Топ:</b> ${formatReaderName(topList[0].name)} — ${topList[0].total_juz} пора`);
     } else {
       lines.push('\u200E🏆 <b>Топ-3:</b>');
       topList.slice(0, 3).forEach((u, i) => {
         const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : '🥉';
-        lines.push(`\u200E${medal} \u2068${u.name}\u2069\u200E — ${u.total_juz} пора`);
+        lines.push(`\u200E${medal} <b>${i + 1}-ўрин:</b> ${formatReaderName(u.name)} — ${u.total_juz} пора`);
       });
     }
   }
@@ -192,7 +218,7 @@ export async function sendGroupDua(
     `<i>«${duaText}»</i>\n`,
   ];
   if (readers.length > 0) {
-    const formattedReaders = readers.slice(0, 15).map((r) => `\u2068${r}\u2069\u200E`);
+    const formattedReaders = readers.slice(0, 15).map((r) => formatReaderName(r));
     let readersStr = formattedReaders.join(', ');
     if (readers.length > 15) {
       readersStr += ` ва яна ${readers.length - 15} киши`;
@@ -230,17 +256,18 @@ export async function sendSoloHatmToChannel(
   if (!token || !channelId) return null;
 
   const lrm = '\u200E';
+  const safeReader = formatReaderName(userName);
   const lines: string[] = [
     `🌙 <b>Шахсий Хатми Қуръон</b>`,
     `<i>«Барча мўмин-мусулмонлар ҳаққига бағишланади»</i>\n`,
-    `👤 <b>Қори:</b> \u2068${userName}\u2069${lrm}`,
+    `👤 <b>Қори:</b> ${safeReader}`,
     `📊 <b>30/30 ўқилди</b> (Тўлиқ хатм)`,
     `<code>[🟨🟨🟨🟨🟨🟨🟨🟨🟨🟨]</code>\n`,
   ];
 
   for (let i = 1; i <= 30; i++) {
     const num = String(i).padStart(2, '0');
-    lines.push(`${lrm}<b>${num}-пора:</b> \u2068${userName}\u2069${lrm} ✅`);
+    lines.push(`${lrm}<b>${num}-пора:</b> ${safeReader} ✅`);
   }
 
   lines.push('\n🤲 <b>Аллоҳим! Ушбу ўқилган Қуръони Карим хатмини Ўз даргоҳингда ҳусни қабул айла! Қоримизга ва барча мўмин-мусулмонларга икки дунё саодатини ато эт! Омин!</b>');

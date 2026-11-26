@@ -12,6 +12,7 @@ declare global {
         setHeaderColor?: (color: string) => void;
         setBackgroundColor?: (color: string) => void;
         initDataUnsafe?: {
+          start_param?: string;
           user?: {
             id: number;
             first_name?: string;

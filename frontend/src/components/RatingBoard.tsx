@@ -131,7 +131,7 @@ export const RatingBoard: React.FC<RatingBoardProps> = ({
             <span className="text-amber-100 font-medium flex items-center gap-1.5">
               <span>🏆</span>
               <span>
-                Top: <strong className="text-white">{topOne.name}</strong> — {topOne.total_juz} пора
+                Top: <strong className="text-white"><bdi dir="auto">{topOne.name}</bdi></strong> — {topOne.total_juz} пора
               </span>
             </span>
             <span className="text-[11px] font-bold text-amber-300">
