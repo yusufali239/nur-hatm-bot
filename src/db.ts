@@ -20,6 +20,18 @@ export function isAdminUser(env: Env, user: UserRow | null): boolean {
 
 let isInitialized = false;
 
+// Short-lived per-isolate read caches to drastically reduce D1 row reads on polling
+const LEADERBOARD_CACHE_TTL_MS = 30_000;
+const RECENT_HATMS_CACHE_TTL_MS = 15_000;
+
+let leaderboardCache: { limit: number; data: LeaderboardData; expiresAt: number } | null = null;
+let recentHatmsCache: { data: FullStateResponse['recent_hatms']; expiresAt: number } | null = null;
+
+export function invalidateReadCaches(): void {
+  leaderboardCache = null;
+  recentHatmsCache = null;
+}
+
 /**
  * Initializes database tables & seeds 2599-Хатм if not initialized yet
  */
@@ -247,6 +259,11 @@ export async function getActiveHatm(
 }
 
 export async function getLeaderboard(db: D1Database, limit: number = 10): Promise<LeaderboardData> {
+  const now = Date.now();
+  if (leaderboardCache && leaderboardCache.limit === limit && leaderboardCache.expiresAt > now) {
+    return leaderboardCache.data;
+  }
+
   const [topUsersRes, stats, completedHatms] = await Promise.all([
     db.prepare(`
       SELECT * FROM users
@@ -278,27 +295,23 @@ export async function getLeaderboard(db: D1Database, limit: number = 10): Promis
     badge: idx === 0 ? '👑 Ҳофиз' : idx < 3 ? '🌟 Мумтоз' : '📖 Қори',
   }));
 
-  return {
+  const result: LeaderboardData = {
     top_users: topUsers,
     total_participants: stats?.total_participants || 0,
     total_completed_juzs: stats?.total_completed_juzs || 0,
     total_completed_hatms: Math.max(completedHatms?.count || 1, 1),
   };
+  leaderboardCache = { limit, data: result, expiresAt: Date.now() + LEADERBOARD_CACHE_TTL_MS };
+  return result;
 }
 
-export async function getFullState(
-  db: D1Database,
-  env: Env,
-  userId: number = 777000,
-  hatmId?: number
-): Promise<FullStateResponse> {
-  await ensureInitialized(db, env);
+async function getRecentHatmsCached(db: D1Database): Promise<FullStateResponse['recent_hatms']> {
+  const now = Date.now();
+  if (recentHatmsCache && recentHatmsCache.expiresAt > now) {
+    return recentHatmsCache.data;
+  }
 
-  const [user, { hatm, juzs }, leaderboard, recentHatmsRes] = await Promise.all([
-    getOrCreateUser(db, env, userId),
-    getActiveHatm(db, hatmId, userId),
-    getLeaderboard(db, 10),
-    db.prepare(`
+  const recentHatmsRes = await db.prepare(`
       SELECT
         h.id,
         h.number,
@@ -327,8 +340,7 @@ export async function getFullState(
       done_count: number;
       free_count: number;
       booked_count: number;
-    }>(),
-  ]);
+    }>();
 
   const recentHatms = (recentHatmsRes.results || []).map((h) => ({
     id: h.id,
@@ -342,6 +354,25 @@ export async function getFullState(
     free_count: h.free_count,
     booked_count: h.booked_count,
   }));
+
+  recentHatmsCache = { data: recentHatms, expiresAt: Date.now() + RECENT_HATMS_CACHE_TTL_MS };
+  return recentHatms;
+}
+
+export async function getFullState(
+  db: D1Database,
+  env: Env,
+  userId: number = 777000,
+  hatmId?: number
+): Promise<FullStateResponse> {
+  await ensureInitialized(db, env);
+
+  const [user, { hatm, juzs }, leaderboard, recentHatms] = await Promise.all([
+    getOrCreateUser(db, env, userId),
+    getActiveHatm(db, hatmId, userId),
+    getLeaderboard(db, 10),
+    getRecentHatmsCached(db),
+  ]);
 
   const doneCount = juzs.filter((j) => j.status === 'done').length;
   const bookedCount = juzs.filter((j) => j.status === 'booked').length;
@@ -498,6 +529,7 @@ export async function bookMultipleJuzs(
   }
 
   if (booked.length > 0) {
+    invalidateReadCaches();
     await runBackgroundTask(syncChannelBoard(env, hatm.id), 'syncChannelBoard', waitUntil);
   }
 
@@ -557,6 +589,7 @@ export async function completeUserJuzs(
     `).bind(completed.length, pointsDelta, user.id).run();
 
     // Auto-delete user's reminder messages from bot chat!
+    invalidateReadCaches();
     await runBackgroundTask(clearUserReminders(db, env, user.id), 'clearUserReminders', waitUntil);
     await runBackgroundTask(syncChannelBoard(env, hatm.id), 'syncChannelBoard', waitUntil);
   }
@@ -614,6 +647,7 @@ export async function uncompleteUserJuzs(
       WHERE id = ?
     `).bind(reverted.length, reverted.length * ptsPerJuz, user.id).run();
 
+    invalidateReadCaches();
     await runBackgroundTask(syncChannelBoard(env, hatm.id), 'syncChannelBoard', waitUntil);
   }
 
@@ -659,6 +693,7 @@ export async function releaseUserJuzs(
   }
 
   if (released.length > 0) {
+    invalidateReadCaches();
     await runBackgroundTask(clearUserReminders(db, env, user.id), 'clearUserReminders', waitUntil);
     await runBackgroundTask(syncChannelBoard(env, hatm.id), 'syncChannelBoard', waitUntil);
   }
@@ -1038,6 +1073,7 @@ export async function sweepExpiredJuzs(db: D1Database, env: Env): Promise<number
 
   const affectedHatms = new Set<number>();
   const expiredByUser = new Map<number, number[]>();
+  invalidateReadCaches();
 
   for (const j of expired) {
     affectedHatms.add(j.hatm_id);
@@ -1250,6 +1286,7 @@ export async function banUserById(
   await ensureInitialized(db, env);
 
   const val = banned ? 1 : 0;
+  invalidateReadCaches();
   await db.prepare(`
     INSERT INTO users (id, name, is_banned, created_at, updated_at)
     VALUES (?, ?, ?, datetime('now'), datetime('now'))

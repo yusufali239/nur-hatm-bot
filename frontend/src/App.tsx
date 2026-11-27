@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   Award,
@@ -73,11 +73,16 @@ export const App: React.FC = () => {
     return null;
   });
 
+  const activeHatmIdRef = useRef<number | null>(activeHatmId);
+  activeHatmIdRef.current = activeHatmId;
+  const bannedRef = useRef<string | null>(bannedMessage);
+  bannedRef.current = bannedMessage;
+
   const loadState = useCallback(
     async (silent = false, targetHatmId?: number | null) => {
       if (!silent) setLoading(true);
       try {
-        const idToFetch = targetHatmId !== undefined ? targetHatmId : activeHatmId;
+        const idToFetch = targetHatmId !== undefined ? targetHatmId : activeHatmIdRef.current;
         const data = await fetchAppState(
           identity.id,
           identity.name,
@@ -86,7 +91,8 @@ export const App: React.FC = () => {
         );
         setState(data);
         setBannedMessage(null);
-        if (data.hatm) {
+        if (data.hatm && data.hatm.id !== activeHatmIdRef.current) {
+          activeHatmIdRef.current = data.hatm.id;
           setActiveHatmId(data.hatm.id);
         }
       } catch (err: any) {
@@ -94,21 +100,34 @@ export const App: React.FC = () => {
         if (msg.includes('тақиқланган') || msg.toLowerCase().includes('banned')) {
           setBannedMessage(msg);
           setState(null);
-        } else {
+        } else if (!silent) {
           showToast(msg, 'error');
         }
       } finally {
         if (!silent) setLoading(false);
       }
     },
-    [identity, activeHatmId, showToast]
+    [identity, showToast]
   );
 
   useEffect(() => {
     initTelegramWebApp();
     loadState();
-    const poll = setInterval(() => loadState(true), 10000);
-    return () => clearInterval(poll);
+    const poll = setInterval(() => {
+      if (!document.hidden && !bannedRef.current) {
+        loadState(true);
+      }
+    }, 60000);
+    const onVisibility = () => {
+      if (!document.hidden && !bannedRef.current) {
+        loadState(true);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(poll);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, [loadState]);
 
   const hatm: HatmData | null = state?.hatm || null;

@@ -14,9 +14,9 @@ binding = "DB"
 database_name = "nur-hatm-db"
 database_id = "1d6c8c12-05d0-4a4d-9805-9694d6043181"
 
-# ⏰ Cron Trigger: Runs background expiration & reminder worker every minute (Never sleeps!)
+# ⏰ Cron Trigger: Runs background expiration & reminder worker every 15 minutes
 [triggers]
-crons = ["* * * * *"]
+crons = ["*/15 * * * *"]
 
 [vars]
 # Channel/Group username or ID for live board updates & completion Dua
